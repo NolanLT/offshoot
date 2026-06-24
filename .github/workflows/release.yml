@@ -1,0 +1,45 @@
+name: Release
+
+# Publishes on a pushed version tag (e.g. v0.1.0). Requires repo secrets:
+#   VSCE_TOKEN  - Azure DevOps PAT (Marketplace > Manage) for the VS Marketplace
+#   OVSX_TOKEN  - Open VSX access token (optional; step is skipped if unset)
+# Also attaches the built .vsix to a GitHub Release.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+      OVSX_TOKEN: ${{ secrets.OVSX_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm test && npm run build
+
+      - name: Package VSIX
+        run: npx @vscode/vsce package -o offshoot.vsix
+
+      - name: Publish to VS Marketplace
+        if: ${{ env.VSCE_TOKEN != '' }}
+        run: npx @vscode/vsce publish --packagePath offshoot.vsix --pat "$VSCE_TOKEN"
+
+      - name: Publish to Open VSX
+        if: ${{ env.OVSX_TOKEN != '' }}
+        run: npx ovsx publish offshoot.vsix -p "$OVSX_TOKEN"
+
+      - name: Attach VSIX to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: offshoot.vsix
