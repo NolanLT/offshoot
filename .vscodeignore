@@ -1,0 +1,16 @@
+.vscode/**
+src/**
+webview/**
+scripts/**
+test/**
+node_modules/**
+.git/**
+**/*.ts
+**/*.tsx
+**/*.map
+tsconfig.json
+webview/tsconfig.json
+vite.config.ts
+esbuild.mjs
+.gitignore
+**/.DS_Store

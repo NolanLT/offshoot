@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.vsix
+.offshoot/
+.DS_Store
+test/.out.cjs

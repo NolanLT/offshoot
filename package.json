@@ -1,0 +1,106 @@
+{
+  "name": "offshoot",
+  "displayName": "Offshoot",
+  "description": "Local-only PR-style review and versioning. No Git. No network. Disk is the source of truth.",
+  "publisher": "LmnTrtl",
+  "version": "0.0.1",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LmnTrtl/offshoot"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "review",
+    "diff",
+    "versioning",
+    "local",
+    "pr"
+  ],
+  "icon": "media/icon.png",
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "offshoot",
+          "title": "Offshoot",
+          "icon": "media/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "offshoot": [
+        {
+          "type": "webview",
+          "id": "offshoot.sidebar",
+          "name": "Offshoot"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "offshoot.openPR",
+        "title": "Offshoot: Open New PR"
+      },
+      {
+        "command": "offshoot.refresh",
+        "title": "Offshoot: Refresh PR List"
+      },
+      {
+        "command": "offshoot.commitSelection",
+        "title": "Offshoot: Commit Selection"
+      },
+      {
+        "command": "offshoot.toggleReview",
+        "title": "Offshoot: Toggle Review Markers"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "offshoot.commitSelection",
+          "group": "offshoot",
+          "when": "offshoot.hasActivePR"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "npm run build:webview && npm run build:ext",
+    "build:ext": "node esbuild.mjs",
+    "build:webview": "vite build",
+    "watch:ext": "node esbuild.mjs --watch",
+    "watch:webview": "vite build --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p webview/tsconfig.json",
+    "test": "esbuild test/engine.test.ts --bundle --platform=node --format=cjs --outfile=test/.out.cjs --log-level=warning && node test/.out.cjs",
+    "icon": "node scripts/gen-icon.mjs",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "diff": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.0",
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/vscode": "^1.84.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "esbuild": "^0.24.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.5.0",
+    "vite": "^6.0.0"
+  }
+}
