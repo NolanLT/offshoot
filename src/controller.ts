@@ -223,17 +223,37 @@ export class Controller {
     this.refresh();
   }
 
+  /** Expand a created/deleted URI to the tracked files it represents: a file →
+   *  itself; a folder → every (non-ignored) file within it, recursively. Folders
+   *  are implicit — we track their files, not the folder path itself. */
+  private expandToFiles(uri: vscode.Uri): Array<{ rel: string; abs: string }> {
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(uri.fsPath);
+    } catch {
+      return [];
+    }
+    const out: Array<{ rel: string; abs: string }> = [];
+    const consider = (absFile: string) => {
+      const rel = this.tracked(vscode.Uri.file(absFile));
+      if (rel) out.push({ rel, abs: absFile });
+    };
+    if (stat.isDirectory()) for (const f of walkFiles(uri.fsPath)) consider(f);
+    else consider(uri.fsPath);
+    return out;
+  }
+
   private onCreate(e: vscode.FileCreateEvent) {
     let any = false;
     for (const uri of e.files) {
-      const file = this.tracked(uri);
-      if (!file) continue;
-      for (const prId of this.openPrIds()) {
-        try {
-          this.engine.noteCreate(prId, file);
-          any = true;
-        } catch {
-          /* ignore */
+      for (const { rel } of this.expandToFiles(uri)) {
+        for (const prId of this.openPrIds()) {
+          try {
+            this.engine.noteCreate(prId, rel);
+            any = true;
+          } catch {
+            /* ignore */
+          }
         }
       }
     }
@@ -243,48 +263,34 @@ export class Controller {
     }
   }
 
-  /** Capture each file's exact bytes BEFORE it's deleted (the file still exists
-   *  here), so revert can restore it — including binaries like images. Runs for
-   *  deletions initiated through VS Code. */
+  /** Capture exact bytes of every file BEFORE deletion (they still exist here) —
+   *  recursing into folders — so revert can restore them, binaries included.
+   *  Runs for deletions initiated through VS Code. */
   private onWillDelete(e: vscode.FileWillDeleteEvent) {
     for (const uri of e.files) {
-      const file = this.tracked(uri);
-      if (!file) continue;
-      let bytes: Buffer;
-      try {
-        bytes = fs.readFileSync(uri.fsPath); // raw bytes; skips folders (throws)
-      } catch {
-        continue;
-      }
-      for (const prId of this.openPrIds()) {
+      for (const { rel, abs } of this.expandToFiles(uri)) {
+        let bytes: Buffer;
         try {
-          this.engine.noteDelete(prId, file, bytes);
+          bytes = fs.readFileSync(abs);
         } catch {
-          /* ignore */
+          continue;
+        }
+        for (const prId of this.openPrIds()) {
+          try {
+            this.engine.noteDelete(prId, rel, bytes);
+          } catch {
+            /* ignore */
+          }
         }
       }
     }
   }
 
-  private onDelete(e: vscode.FileDeleteEvent) {
-    let any = false;
-    for (const uri of e.files) {
-      const file = this.tracked(uri);
-      if (!file) continue;
-      const prior = this.lastContent.get(uri.toString()) ?? "";
-      for (const prId of this.openPrIds()) {
-        try {
-          this.engine.noteDelete(prId, file, prior);
-          any = true;
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-    if (any) {
-      for (const prId of this.openPrIds()) this.safeRecord(prId);
-      this.refresh();
-    }
+  private onDelete(_e: vscode.FileDeleteEvent) {
+    // Bytes were already captured in onWillDelete (pre-deletion); now the files
+    // are gone, so recompute deltas and refresh.
+    for (const prId of this.openPrIds()) this.safeRecord(prId);
+    this.refresh();
   }
 
   private safeRecord(prId: string) {
@@ -799,4 +805,21 @@ export class Controller {
       this.refresh();
     }
   }
+}
+
+/** Recursively list all files (absolute paths) under a directory. */
+function walkFiles(dir: string): string[] {
+  const out: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...walkFiles(p));
+    else if (e.isFile()) out.push(p);
+  }
+  return out;
 }

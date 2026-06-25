@@ -147,7 +147,7 @@ export class Engine {
       if (!entry.existed && exists) {
         ops.push({ type: "addFile", file });
         // line-level adds only for text; binaries (e.g. images) are file-level
-        if (!isBinaryBuffer(fs.readFileSync(this.abs(file)))) {
+        if (!isBinaryOnDisk(this.abs(file))) {
           for (const op of computeLineOps(file, "", this.readDisk(file))) ops.push(op);
         }
         continue;
@@ -225,7 +225,7 @@ export class Engine {
         continue;
       }
       if (!entry.existed && exists) {
-        if (isBinaryBuffer(fs.readFileSync(this.abs(file)))) {
+        if (isBinaryOnDisk(this.abs(file))) {
           changedFiles.push({ file, added: 0, removed: 0, kind: "added" });
         } else {
           changedFiles.push(summarizeFile(file, "", this.readDisk(file), "added"));
@@ -301,6 +301,7 @@ export class Engine {
     const abs = this.abs(file);
     if (!entry.existed) {
       if (fs.existsSync(abs)) fs.rmSync(abs); // was created in this PR
+      this.pruneEmptyDirs(abs); // remove folders that the add introduced
       return;
     }
     fs.mkdirSync(path.dirname(abs), { recursive: true });
@@ -311,6 +312,22 @@ export class Engine {
         ? this.storage.readBaselineFile(prId, file)
         : "";
       fs.writeFileSync(abs, content);
+    }
+  }
+
+  /** Remove now-empty parent folders up to (but not including) the workspace
+   *  root — so reverting an added folder leaves no empty shell behind. */
+  private pruneEmptyDirs(absFile: string): void {
+    const root = path.resolve(this.workspaceRoot);
+    let dir = path.dirname(path.resolve(absFile));
+    while (dir.length > root.length && dir.startsWith(root)) {
+      try {
+        if (fs.readdirSync(dir).length > 0) break;
+        fs.rmdirSync(dir);
+        dir = path.dirname(dir);
+      } catch {
+        break;
+      }
     }
   }
 
@@ -444,6 +461,16 @@ function isBinaryBuffer(buf: Buffer): boolean {
   const n = Math.min(buf.length, 8000);
   for (let i = 0; i < n; i++) if (buf[i] === 0) return true;
   return false;
+}
+
+/** Binary check straight from disk; treats unreadable paths (e.g. a directory)
+ *  as binary so they're never line-diffed. */
+function isBinaryOnDisk(absPath: string): boolean {
+  try {
+    return isBinaryBuffer(fs.readFileSync(absPath));
+  } catch {
+    return true;
+  }
 }
 
 function collapseRanges(sorted: number[]): Array<[number, number]> {

@@ -109,8 +109,9 @@ captures baselines automatically — no tracking step needed.)
 Adding a file of any type during a PR is undone on revert; deleting a file —
 text or binary (e.g. an image) — restores it byte-for-byte, because Offshoot
 saves its bytes just before deletion. Binary *content* changes (editing an
-image's pixels) are not tracked — only add and delete. Deletions are captured
-when performed through VS Code.
+image's pixels) are not tracked — only add and delete. **Folders work too:**
+deleting a folder restores its whole tree on revert, and reverting an added
+folder removes it. Deletions are captured when performed through VS Code.
 
 ## Out of scope (by design)
 

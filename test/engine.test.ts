@@ -239,5 +239,41 @@ function read(root: string, rel: string): string {
   ok(!fs.existsSync(path.join(root, "new.png")), "revert deletes added binary");
 })();
 
+// --- Test 13: delete a folder (its files) -> revert restores the tree ---
+(function folderDeleteRevert() {
+  console.log("folder delete revert:");
+  const root = tmp();
+  write(root, "src/a.ts", "export const a = 1;\n");
+  write(root, "src/sub/b.ts", "export const b = 2;\n");
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  // simulate onWillDelete capturing every file in the folder before removal
+  e.noteDelete("pr1", "src/a.ts", Buffer.from(read(root, "src/a.ts")));
+  e.noteDelete("pr1", "src/sub/b.ts", Buffer.from(read(root, "src/sub/b.ts")));
+  fs.rmSync(path.join(root, "src"), { recursive: true, force: true });
+  e.recordChange("pr1");
+  eq(e.prView("pr1").changedFiles.length, 2, "two deleted files tracked");
+  e.revert("pr1");
+  eq(read(root, "src/a.ts"), "export const a = 1;\n", "src/a.ts restored");
+  eq(read(root, "src/sub/b.ts"), "export const b = 2;\n", "nested src/sub/b.ts restored");
+})();
+
+// --- Test 14: add a folder (its files) -> revert removes files AND folders ---
+(function folderAddRevert() {
+  console.log("folder add revert:");
+  const root = tmp();
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  e.noteCreate("pr1", "newdir/x.ts");
+  e.noteCreate("pr1", "newdir/deep/y.ts");
+  write(root, "newdir/x.ts", "x\n");
+  write(root, "newdir/deep/y.ts", "y\n");
+  e.recordChange("pr1");
+  eq(e.prView("pr1").changedFiles.length, 2, "two added files");
+  e.revert("pr1");
+  ok(!fs.existsSync(path.join(root, "newdir/x.ts")), "added file removed");
+  ok(!fs.existsSync(path.join(root, "newdir")), "empty added folder pruned");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
