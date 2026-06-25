@@ -1,17 +1,26 @@
 import * as vscode from "vscode";
 import type { Controller } from "../controller";
-import type { ToExt, ToWebview } from "../shared/protocol";
+import type { ToExt, ToWebview, SidebarState } from "../shared/protocol";
 
 /** Hosts the React sidebar (built to dist/webview) and bridges postMessage. */
 export class SidebarProvider implements vscode.WebviewViewProvider {
   static readonly viewId = "offshoot.sidebar";
 
+  /** The currently-live view, updated on each resolve. Badge + messages always
+   *  target this one, so a stale/disposed view can never receive (or strand)
+   *  the icon badge. */
+  private view?: vscode.WebviewView;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly controller: Controller
-  ) {}
+  ) {
+    // Register the poster once; it routes to whatever the current view is.
+    this.controller.setPoster((state) => this.render(state));
+  }
 
   resolveWebviewView(view: vscode.WebviewView) {
+    this.view = view;
     const webview = view.webview;
     webview.options = {
       enableScripts: true,
@@ -19,21 +28,32 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     };
     webview.html = this.html(webview);
 
-    this.controller.setPoster((state) => {
-      const msg: ToWebview = { type: "state", state };
-      void webview.postMessage(msg);
-      // Badge on the activity-bar icon = number of open PRs.
-      const n = state.prs.length;
-      view.badge = n
-        ? { value: n, tooltip: `${n} open PR${n === 1 ? "" : "s"}` }
-        : undefined;
+    view.onDidDispose(() => {
+      if (this.view === view) this.view = undefined;
     });
-
-    view.onDidDispose(() => this.controller.setPoster(() => {}));
 
     webview.onDidReceiveMessage((msg: ToExt) => {
       void this.controller.handleMessage(msg);
     });
+
+    // Push current state (and badge) as soon as the view is live.
+    this.controller.refresh();
+  }
+
+  private render(state: SidebarState) {
+    const view = this.view;
+    if (!view) return;
+    try {
+      const msg: ToWebview = { type: "state", state };
+      void view.webview.postMessage(msg);
+      // Badge on the activity-bar icon = number of open PRs (undefined clears it).
+      const n = state.prs.length;
+      view.badge = n
+        ? { value: n, tooltip: `${n} open PR${n === 1 ? "" : "s"}` }
+        : undefined;
+    } catch {
+      // view was disposed between checks; ignore
+    }
   }
 
   private html(webview: vscode.Webview): string {

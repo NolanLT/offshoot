@@ -4,6 +4,15 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The activity-bar badge now reliably clears after committing or reverting the
+  last open PR. The sidebar provider keeps a single live-view reference and
+  registers its poster once, so badge updates always target the current view
+  instead of a stale/disposed one.
+
 ## [0.0.4]
 
 ### Fixed
