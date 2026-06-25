@@ -282,9 +282,23 @@ export class Controller {
 
   // ---------------- commands ----------------
   private async cmdOpenPR(title: string, notes: string, id?: string) {
+    let finalTitle = title.trim();
+    if (!finalTitle) {
+      // Error #14: a PR title is required. Surface a box to type one, with
+      // submit (Enter) / cancel (Esc) and inline validation that blocks empty.
+      const entered = await vscode.window.showInputBox({
+        title: "Open Pull Request — title required (Offshoot Error #14)",
+        prompt: "Enter a title for the new Pull Request. Press Enter to open it, or Esc to cancel.",
+        placeHolder: "e.g. Refactor auth flow",
+        ignoreFocusOut: true,
+        validateInput: (v) => (v.trim() ? null : "A PR title is required.")
+      });
+      if (entered === undefined || !entered.trim()) return; // cancelled
+      finalTitle = entered.trim();
+    }
     const prId = id?.trim() || this.nextId();
     try {
-      this.engine.openPR(prId, title.trim() || prId, notes);
+      this.engine.openPR(prId, finalTitle, notes);
       this.decorations.stop();
       this.setStatus("info", `Opened PR ${prNum(prId)}.`);
       this.refresh();

@@ -72,7 +72,8 @@ function NewPR() {
   const [id, setId] = useState("");
 
   const open = () => {
-    if (!title.trim() && !id.trim()) return;
+    // Always send — an empty title is handled by the extension (Error #14),
+    // which prompts for one rather than silently doing nothing.
     send({ type: "openPR", id: id.trim() || undefined, title, notes });
     setTitle("");
     setNotes("");

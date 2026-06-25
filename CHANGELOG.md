@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Error #14: opening a PR with no title now prompts for one in an input box
+  (Enter to open, Esc to cancel) instead of silently doing nothing.
+
 ### Fixed
 
 - The activity-bar badge now reliably clears after committing or reverting the

@@ -70,6 +70,7 @@ Buttons that lose data say so and ask to confirm. Use this table to debug:
 | 11 | File no longer exists | Skip this file · Recreate from baseline · Cancel |
 | 12 | Overlap with other open PR(s) on the same file | one Commit button per overlapping PR · Commit all overlapping · Cancel |
 | 13 | No diff in the selected region | Choose another selection · Cancel |
+| 14 | A PR title is required (tried to open a PR with no title) | Type a title in the box → Enter to open · Esc to cancel |
 
 Every error offers at least one real action plus Cancel; choosing a fix re-runs
 the guard before touching disk, so a fix can’t create a new inconsistency.
