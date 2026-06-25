@@ -9,9 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Replaced the activity-bar icon badge (which VS Code wouldn't repaint reliably
-  when clearing) with a **status-bar item** showing the open-PR count
-  (“$(git-pull-request) Offshoot: N”). Always visible, updates live, and clicking
-  it opens the Offshoot view.
+  when clearing) with a **status-bar item** showing the Offshoot fork glyph and
+  the open-PR count. Always visible, updates live, and clicking it opens the
+  Offshoot view. The glyph ships as a contributed icon font (`npm run font`).
 
 ## [0.0.5]
 

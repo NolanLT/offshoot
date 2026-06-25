@@ -114,7 +114,7 @@ export class Controller {
   }
 
   private updateStatusBar(n: number) {
-    this.statusBar.text = `$(git-pull-request) Offshoot: ${n}`;
+    this.statusBar.text = `$(offshoot) ${n}`;
     this.statusBar.tooltip = `Offshoot — ${n} open PR${n === 1 ? "" : "s"}. Click to open.`;
     this.statusBar.show();
   }
