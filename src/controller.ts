@@ -6,6 +6,7 @@ import { BaselineContentProvider } from "./ui/baselineProvider";
 import { DecorationManager } from "./ui/decorations";
 import { resolve as resolveDialog, info, error as showError } from "./ui/dialogs";
 import { IgnoreMatcher } from "./engine/ignore";
+import { prNum } from "./shared/protocol";
 import type { SidebarState, ToExt, PRListItem } from "./shared/protocol";
 
 /**
@@ -262,12 +263,12 @@ export class Controller {
           break;
         case "recapture":
           this.engine.recapture(msg.id);
-          this.setStatus("info", `PR #${msg.id} re-captured (baseline reset to now).`);
+          this.setStatus("info", `PR ${prNum(msg.id)} re-captured (baseline reset to now).`);
           this.refresh();
           break;
         case "discard":
           this.engine.commit(msg.id);
-          this.setStatus("info", `PR #${msg.id} discarded.`);
+          this.setStatus("info", `PR ${prNum(msg.id)} discarded.`);
           this.refresh();
           break;
         case "revealFolder":
@@ -285,7 +286,7 @@ export class Controller {
     try {
       this.engine.openPR(prId, title.trim() || prId, notes);
       this.decorations.stop();
-      this.setStatus("info", `Opened PR #${prId}.`);
+      this.setStatus("info", `Opened PR ${prNum(prId)}.`);
       this.refresh();
     } catch (err) {
       await this.handleError(err);
@@ -307,8 +308,8 @@ export class Controller {
     this.engine.storage.writeActive(id);
     this.decorations.start(id);
 
-    // Open the changed files so the yellow markers + diff lenses are actually
-    // visible — otherwise Review looks like it did nothing.
+    // Open the changed files so the in-editor decorations + diff lenses are
+    // actually visible — otherwise Review looks like it did nothing.
     const view = this.engine.prView(id);
     const openable = view.changedFiles.filter((f) => f.kind !== "deleted");
     for (const f of openable) {
@@ -327,12 +328,12 @@ export class Controller {
     if (openable.length === 0) {
       this.setStatus(
         "info",
-        `Review on for ${id}: no editable changed files yet. Edit and save a file to see markers.`
+        `Review on for PR ${prNum(id)}: no editable changed files yet. Edit and save a file to see changes.`
       );
     } else {
       this.setStatus(
         "info",
-        `Reviewing ${openable.length} file(s): yellow lines mark changes — click the “↔ Offshoot diff” lens or a file in the panel to see the split diff.`
+        `Reviewing ${openable.length} file(s): changes are highlighted in the editor (green added, blue modified, red removed) — click the “↔ Offshoot diff” lens or a file in the panel for the split diff.`
       );
     }
     this.refresh();
@@ -387,7 +388,7 @@ export class Controller {
     const meta = this.engine.storage.readMeta(prId);
     if (
       !(await this.confirm(
-        `Commit PR ${prId} — “${meta.title}”?  (${this.summary(prId)})\n\nThis deletes the baseline and cannot be undone.`,
+        `Commit PR ${prNum(prId)} — “${meta.title}”?  (${this.summary(prId)})\n\nThis deletes the baseline and cannot be undone.`,
         "Commit"
       ))
     )
@@ -401,7 +402,7 @@ export class Controller {
         if (!ignoreOverlap) this.checkOverlap(prId, files);
         this.engine.commit(prId);
         this.decorations.reviewing && this.decorations.prId === prId && this.decorations.stop();
-        this.setStatus("info", `Committed PR #${prId}. Changes are now permanent.`);
+        this.setStatus("info", `Committed PR ${prNum(prId)}. Changes are now permanent.`);
         this.refresh();
         return;
       } catch (err) {
@@ -420,7 +421,7 @@ export class Controller {
     const meta = this.engine.storage.readMeta(prId);
     if (
       !(await this.confirm(
-        `Revert PR ${prId} — “${meta.title}” to baseline?  (${this.summary(prId)})\n\nThis overwrites the current files on disk.`,
+        `Revert PR ${prNum(prId)} — “${meta.title}” to baseline?  (${this.summary(prId)})\n\nThis overwrites the current files on disk.`,
         "Revert"
       ))
     )
@@ -434,7 +435,7 @@ export class Controller {
         if (!ignoreOverlap) this.checkOverlap(prId, files);
         this.engine.revert(prId);
         this.decorations.reviewing && this.decorations.prId === prId && this.decorations.stop();
-        this.setStatus("info", `Reverted PR #${prId} to baseline.`);
+        this.setStatus("info", `Reverted PR ${prNum(prId)} to baseline.`);
         this.refresh();
         return;
       } catch (err) {
@@ -452,7 +453,7 @@ export class Controller {
     if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
     if (
       !(await this.confirm(
-        `Revert ${file} to baseline in PR ${prId}?\n\nThis overwrites the file on disk.`,
+        `Revert ${file} to baseline in PR ${prNum(prId)}?\n\nThis overwrites the file on disk.`,
         "Revert File"
       ))
     )
@@ -474,7 +475,7 @@ export class Controller {
           this.engine.storage.deletePR(prId);
           this.setStatus(
             "info",
-            `Reverted ${file}; PR ${prId} had no remaining changes and was closed.`
+            `Reverted ${file}; PR ${prNum(prId)} had no remaining changes and was closed.`
           );
         } else {
           this.setStatus("info", `Reverted ${file} to baseline.`);
@@ -506,7 +507,7 @@ export class Controller {
         value: meta.notes
       })) ?? meta.notes;
     this.engine.editMeta(prId, title.trim() || meta.title, notes);
-    this.setStatus("info", `Updated PR ${prId}.`);
+    this.setStatus("info", `Updated PR ${prNum(prId)}.`);
     this.refresh();
   }
 
@@ -529,7 +530,7 @@ export class Controller {
       ranges = [];
     }
     if (ranges.length === 0) {
-      void info(`No changes in this file for PR ${activePr}.`);
+      void info(`No changes in this file for PR ${prNum(activePr)}.`);
       return;
     }
     const starts = ranges.map((r) => r[0] - 1).sort((a, b) => a - b);
@@ -563,7 +564,7 @@ export class Controller {
     const end = sel.end.line + 1;
 
     const confirm = await vscode.window.showWarningMessage(
-      `Commit lines ${start}-${end} of ${file} in PR #${prId}? Those lines become permanent.`,
+      `Commit lines ${start}-${end} of ${file} in PR ${prNum(prId)}? Those lines become permanent.`,
       { modal: true },
       "Commit selection"
     );
@@ -653,12 +654,12 @@ export class Controller {
       }
       case "recapture":
         this.engine.recapture((res.data as string) ?? prId);
-        this.setStatus("info", `Re-captured PR #${(res.data as string) ?? prId}.`);
+        this.setStatus("info", `Re-captured PR ${prNum((res.data as string) ?? prId)}.`);
         this.refresh();
         return false;
       case "discard":
         this.engine.commit((res.data as string) ?? prId);
-        this.setStatus("info", `Discarded PR #${(res.data as string) ?? prId}.`);
+        this.setStatus("info", `Discarded PR ${prNum((res.data as string) ?? prId)}.`);
         this.refresh();
         return true;
       case "revealFolder":

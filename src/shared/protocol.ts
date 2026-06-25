@@ -4,6 +4,12 @@
 
 export type PRStatus = "open";
 
+/** Display form of a PR id: "pr1" -> "1"; custom ids like "auth" stay "auth".
+ *  Used so toasts/labels read "PR 1" rather than "PR #pr1". */
+export function prNum(id: string): string {
+  return id.replace(/^pr(?=\d)/, "");
+}
+
 export interface PRMeta {
   id: string;
   title: string;

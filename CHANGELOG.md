@@ -4,7 +4,7 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.4]
 
 ### Fixed
 
@@ -18,6 +18,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - PR titles and changed-file names now truncate with an ellipsis to the sidebar
   width (no horizontal scrollbar); the full title/path shows on hover.
 - The per-file Revert button now sits before the +added/−removed counts.
+- Notifications and dialogs now show the PR number (e.g. “PR 1”) instead of
+  “#pr1”, and the review notification reflects the in-editor highlighting
+  (green added / blue modified / red removed) rather than the old “yellow”
+  wording.
 
 ## [0.0.3]
 

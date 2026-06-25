@@ -2,6 +2,8 @@
 // list of resolution buttons to offer. The guard / command layer turns these
 // into vscode dialogs (Section 6).
 
+import { prNum } from "../shared/protocol";
+
 export type ResolutionId =
   | "cancel"
   | "retry"
@@ -53,7 +55,7 @@ export const Errors = {
     new OffshootError(1, msg, [{ id: "retry", label: "Retry" }, CANCEL]),
 
   prNotFound: (id: string) =>
-    new OffshootError(2, `PR #${id} not found.`, [
+    new OffshootError(2, `PR ${prNum(id)} not found.`, [
       { id: "refreshList", label: "Refresh PR list" },
       CANCEL
     ]),
@@ -83,8 +85,8 @@ export const Errors = {
     ),
 
   idExists: (id: string) =>
-    new OffshootError(5, `PR id "${id}" already exists.`, [
-      { id: "openExisting", label: `Open existing PR #${id}`, data: id },
+    new OffshootError(5, `PR ${prNum(id)} already exists.`, [
+      { id: "openExisting", label: `Open existing PR ${prNum(id)}`, data: id },
       { id: "useDifferentId", label: "Use a different id" },
       CANCEL
     ]),
@@ -97,20 +99,20 @@ export const Errors = {
     ]),
 
   folderMissing: (id: string) =>
-    new OffshootError(7, `PR #${id} folder is missing or closed.`, [
+    new OffshootError(7, `PR ${prNum(id)} folder is missing or closed.`, [
       { id: "removeFromList", label: "Remove from list", data: id },
       CANCEL
     ]),
 
   metaUnreadable: (id: string) =>
-    new OffshootError(8, `meta.json for PR #${id} is unreadable.`, [
+    new OffshootError(8, `meta.json for PR ${prNum(id)} is unreadable.`, [
       { id: "revealFolder", label: "Reveal folder", data: id },
       { id: "discard", label: "Discard PR", destructive: true, data: id },
       CANCEL
     ]),
 
   deltasUnreadable: (id: string) =>
-    new OffshootError(9, `deltas.json for PR #${id} is unreadable.`, [
+    new OffshootError(9, `deltas.json for PR ${prNum(id)} is unreadable.`, [
       { id: "recapture", label: "Re-capture (loses record)", destructive: true, data: id },
       { id: "discard", label: "Discard PR", destructive: true, data: id },
       { id: "revealFolder", label: "Reveal folder", data: id },
@@ -143,11 +145,11 @@ export const Errors = {
 
   overlap: (file: string, prX: string, overlappingIds: string[]) => {
     const buttons: Resolution[] = [
-      { id: "commitOverlap", label: `Commit PR #${prX} only`, data: prX },
+      { id: "commitOverlap", label: `Commit PR ${prNum(prX)} only`, data: prX },
       ...overlappingIds.map(
         (oid): Resolution => ({
           id: "commitOverlap",
-          label: `Commit PR #${oid}`,
+          label: `Commit PR ${prNum(oid)}`,
           data: oid
         })
       )
@@ -162,7 +164,7 @@ export const Errors = {
     buttons.push(CANCEL);
     return new OffshootError(
       12,
-      `PR #${prX} and ${overlappingIds.length} other open PR(s) modify ${file}. How do you want to proceed?`,
+      `PR ${prNum(prX)} and ${overlappingIds.length} other open PR(s) modify ${file}. How do you want to proceed?`,
       buttons
     );
   },

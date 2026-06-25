@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { prNum } from "../../src/shared/protocol";
 import type {
   SidebarState,
   ToWebview,
@@ -14,12 +15,6 @@ const EMPTY: SidebarState = {
   reviewing: false,
   status: null
 };
-
-/** "pr1" -> "1"; custom ids like "auth" -> "auth". No leading # — reads like a
- *  line number. */
-function prNum(id: string): string {
-  return id.replace(/^pr(?=\d)/, "");
-}
 
 function getFlag(key: string, fallback: boolean): boolean {
   const v = vscode.getState<Record<string, unknown>>()?.[key];
