@@ -222,18 +222,18 @@ function SelectedPanel({ state }: { state: SidebarState }) {
 
       <div className="actions">
         <button
-          className="btn primary"
-          title="Select lines in an open file, then click to commit only those lines"
-          onClick={() => send({ type: "commitSelection", id })}
-        >
-          Commit Selected
-        </button>
-        <button
           className="btn danger"
           title="Select lines in an open file, then click to revert only those lines to baseline"
           onClick={() => send({ type: "revertSelection", id })}
         >
           Revert Selected
+        </button>
+        <button
+          className="btn primary"
+          title="Select lines in an open file, then click to commit only those lines"
+          onClick={() => send({ type: "commitSelection", id })}
+        >
+          Commit Selected
         </button>
         <button
           className={`btn review full ${state.reviewing ? "active" : ""}`}

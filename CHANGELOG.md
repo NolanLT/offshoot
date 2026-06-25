@@ -4,7 +4,7 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0]
 
 ### Added
 
@@ -17,11 +17,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The Changes list is now a **collapsible folder tree** — files are grouped under
   their directories. Replaced the A/D/M letter tags with a **kind-colored
   background** (green added / red deleted / yellow modified) that begins at the
-  text (indentation is no longer tinted) and stops before the +/− counts.
+  text (indentation is no longer tinted) and stops before the +/− counts. Files
+  show their basename, left-to-right.
 - **Folder-level actions read as one row:** a folder whose files are all added or
   all deleted shows as a single colored, collapsed folder entry you can expand;
   mixed folders stay open and neutral. (A file touched directly and via a folder
   op is still a single entry — no duplication.)
+- Selection buttons reordered: Revert Selected (red) on the left, Commit Selected
+  (blue) on the right.
 
 ## [0.2.1]
 
