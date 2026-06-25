@@ -83,12 +83,15 @@ sidebar shows. The engine is editor-independent, and both the extension and the
 MCP server compute the same out-of-project storage location for a workspace, so
 they stay in sync (the sidebar watches that folder and refreshes live).
 
-Register it (defaults to the current working directory as the workspace):
+Register it (defaults to the current working directory as the workspace, so it
+follows whatever project the session is in):
 
 ```bash
-claude mcp add offshoot --scope user -- node "<path-to-offshoot>/dist/mcp/server.cjs"
-# or pin a workspace explicitly:
-claude mcp add offshoot --scope user -- node "<...>/dist/mcp/server.cjs" --workspace "C:/path/to/project"
+# portable — runs straight from GitHub, no local path:
+claude mcp add offshoot --scope user -- npx -y github:NolanLT/offshoot
+# pin a release:        npx -y github:NolanLT/offshoot#v0.1.1
+# or run a local build: node "<path-to-offshoot>/dist/mcp/server.cjs"
+# pin a workspace:      … --workspace "C:/path/to/project"
 ```
 
 Tools: `offshoot_list_prs`, `offshoot_open_pr`, `offshoot_track_files`,

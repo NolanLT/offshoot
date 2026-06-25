@@ -4,10 +4,15 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1]
 
 ### Added
 
+- **Portable MCP server.** A `bin` entry + `prepare` build let the MCP server
+  run straight from GitHub with no local path:
+  `claude mcp add offshoot --scope user -- npx -y github:NolanLT/offshoot`
+  (pin a release with `#v0.1.1`). The bundled `dist/mcp/server.cjs` is
+  self-contained.
 - Status bar now also shows total additions ($(add)) and total removals
   ($(remove)) across all open PRs, alongside the PR count.
 
