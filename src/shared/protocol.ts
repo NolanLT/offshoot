@@ -74,6 +74,7 @@ export type ToExt =
   | { type: "revertFile"; id: string; file: string }
   | { type: "editPR"; id: string }
   | { type: "commitSelection"; id: string }
+  | { type: "revertSelection"; id: string }
   | { type: "recapture"; id: string }
   | { type: "discard"; id: string }
   | { type: "revealFolder"; id: string };

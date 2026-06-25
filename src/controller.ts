@@ -344,6 +344,9 @@ export class Controller {
         case "commitSelection":
           await this.cmdCommitSelection(msg.id);
           break;
+        case "revertSelection":
+          await this.cmdRevertSelection(msg.id);
+          break;
         case "recapture":
           this.engine.recapture(msg.id);
           this.setStatus("info", `PR ${prNum(msg.id)} re-captured (baseline reset to now).`);
@@ -673,6 +676,50 @@ export class Controller {
         this.engine.commitSelection(prId, file, start, end);
         if (editor.document.isDirty) await editor.document.save();
         this.setStatus("info", `Committed selection in ${file}.`);
+        if (this.decorations.reviewing) {
+          this.baselineProvider.refresh(prId, file);
+          this.decorations.applyToAll();
+        }
+        this.refresh();
+        return;
+      } catch (err) {
+        const res = await this.resolveOr(err);
+        if (!res) return;
+        const done = await this.applyResolution(res, prId, {});
+        if (done) return;
+      }
+    }
+  }
+
+  private async cmdRevertSelection(prId: string) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      void showError("Open a file and select the region to revert.");
+      return;
+    }
+    const file = this.relFor(editor.document.uri);
+    if (!file) {
+      void showError("The active file is outside the workspace.");
+      return;
+    }
+    const sel = editor.selection;
+    const start = sel.start.line + 1;
+    const end = sel.end.line + 1;
+
+    const confirm = await vscode.window.showWarningMessage(
+      `Revert lines ${start}-${end} of ${file} in PR ${prNum(prId)} to baseline? Those lines are overwritten on disk.`,
+      { modal: true },
+      "Revert selection"
+    );
+    if (confirm !== "Revert selection") return;
+
+    for (;;) {
+      try {
+        // operate on saved disk content; save the buffer first if dirty
+        if (editor.document.isDirty) await editor.document.save();
+        this.checkOverlap(prId, [file]);
+        this.engine.revertSelection(prId, file, start, end);
+        this.setStatus("info", `Reverted selection in ${file}.`);
         if (this.decorations.reviewing) {
           this.baselineProvider.refresh(prId, file);
           this.decorations.applyToAll();

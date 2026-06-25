@@ -418,6 +418,34 @@ export class Engine {
     this.recordChange(prId);
   }
 
+  /**
+   * Revert just the changed lines of `file` within disk line range [selStart,
+   * selEnd] back to baseline, leaving other changes intact. Rewrites the file on
+   * disk (returns the new content's presence implicitly). Throws #13 if the
+   * selection contains no diff. Not supported for binary files.
+   */
+  revertSelection(prId: string, file: string, selStart: number, selEnd: number): void {
+    const idx = this.storage.readBaselineIndex(prId);
+    const entry = idx.files[file];
+    if (!entry || entry.binary) throw Errors.noDiffInSelection();
+
+    const baseline = this.baselineContent(prId, file);
+    const disk = this.diskExists(file) ? this.readDisk(file) : "";
+
+    const { newDisk, revertedAny } = revertSelectionDisk(
+      baseline,
+      disk,
+      selStart,
+      selEnd
+    );
+    if (!revertedAny) throw Errors.noDiffInSelection();
+
+    const abs = this.abs(file);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, newDisk);
+    this.recordChange(prId);
+  }
+
   // ---------- listing for sidebar ----------
   listPRs(): PRMeta[] {
     const metas: PRMeta[] = [];
@@ -533,4 +561,50 @@ function snippetBaseline(
 
   const trailing = disk.endsWith("\n") ? "\n" : "";
   return { newBaseline: out.length ? out.join("\n") + trailing : "", committedAny };
+}
+
+/**
+ * Build new DISK content where regions overlapping [selStart, selEnd] (disk
+ * coords, 1-based inclusive) are reverted to baseline; other changes stay.
+ * Returns revertedAny=false if the selection covers no changed region.
+ */
+function revertSelectionDisk(
+  baseline: string,
+  disk: string,
+  selStart: number,
+  selEnd: number
+): { newDisk: string; revertedAny: boolean } {
+  const parts = diffLines(baseline, disk);
+  const out: string[] = [];
+  let diskLine = 1;
+  let revertedAny = false;
+  const overlaps = (a: number, b: number) => a <= selEnd && b >= selStart;
+
+  for (const part of parts) {
+    const lines = splitLines(part.value);
+    const count = lines.length;
+
+    if (!part.added && !part.removed) {
+      out.push(...lines);
+      diskLine += count;
+    } else if (part.removed) {
+      // baseline-only lines (deleted on disk), at disk position diskLine
+      if (overlaps(diskLine, diskLine)) {
+        out.push(...lines); // revert: re-insert the baseline lines
+        revertedAny = true;
+      }
+      // else: keep the deletion
+    } else {
+      // added on disk: occupies disk lines [diskLine, diskLine+count-1]
+      if (overlaps(diskLine, diskLine + count - 1)) {
+        revertedAny = true; // revert: drop the added lines
+      } else {
+        out.push(...lines); // keep the addition
+      }
+      diskLine += count;
+    }
+  }
+
+  const trailing = disk.endsWith("\n") ? "\n" : "";
+  return { newDisk: out.length ? out.join("\n") + trailing : "", revertedAny };
 }

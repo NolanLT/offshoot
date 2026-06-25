@@ -6,12 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Revert Selected** — like Commit Selected, but reverts only the selected lines
+  back to baseline (sidebar button, editor context menu, `Offshoot: Revert
+  Selection` command), leaving the rest of the PR's changes intact.
+
 ### Changed
 
 - The Changes list is now a **collapsible folder tree** — files are grouped under
   their directories. Replaced the A/D/M letter tags with a **kind-colored
-  background** on each file entry (green added / red deleted / yellow modified);
-  the tint stops before the +/− counts so they stay readable.
+  background** (green added / red deleted / yellow modified) that begins at the
+  text (indentation is no longer tinted) and stops before the +/− counts.
+- **Folder-level actions read as one row:** a folder whose files are all added or
+  all deleted shows as a single colored, collapsed folder entry you can expand;
+  mixed folders stay open and neutral. (A file touched directly and via a folder
+  op is still a single entry — no duplication.)
 
 ## [0.2.1]
 

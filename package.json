@@ -64,6 +64,10 @@
         "title": "Offshoot: Commit Selection"
       },
       {
+        "command": "offshoot.revertSelection",
+        "title": "Offshoot: Revert Selection"
+      },
+      {
         "command": "offshoot.toggleReview",
         "title": "Offshoot: Toggle Review Markers"
       },
@@ -92,6 +96,11 @@
       "editor/context": [
         {
           "command": "offshoot.commitSelection",
+          "group": "offshoot",
+          "when": "offshoot.hasActivePR"
+        },
+        {
+          "command": "offshoot.revertSelection",
           "group": "offshoot",
           "when": "offshoot.hasActivePR"
         }

@@ -273,6 +273,20 @@ hr {
   text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0.85;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.folder-name.kind-added {
+  opacity: 1;
+  background: color-mix(in srgb, var(--vscode-charts-green, #3fb950) 22%, transparent);
+}
+.folder-name.kind-deleted {
+  opacity: 1;
+  background: color-mix(in srgb, var(--vscode-charts-red, #f14c4c) 22%, transparent);
+}
+.folder-name.kind-modified {
+  opacity: 1;
+  background: color-mix(in srgb, var(--vscode-charts-yellow, #d6b300) 22%, transparent);
 }
 
 /* ---- file leaves ---- */
@@ -292,8 +306,9 @@ hr {
   flex: 1;
   min-width: 0;
   cursor: pointer;
-  padding: 3px 7px;
-  border-radius: 4px;
+  /* tint starts at the text: tiny left padding, indent comes from margin-left */
+  padding: 3px 8px 3px 3px;
+  border-radius: 3px;
 }
 /* kind tint is on the file entry only — it does NOT extend to the counts */
 .file-main.kind-added {
@@ -318,8 +333,6 @@ hr {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;
-  text-align: left;
 }
 .counts {
   flex: 0 0 auto;

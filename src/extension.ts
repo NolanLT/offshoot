@@ -52,6 +52,14 @@ export function activate(ctx: vscode.ExtensionContext) {
       }
       void controller.handleMessage({ type: "commitSelection", id: active });
     }),
+    vscode.commands.registerCommand("offshoot.revertSelection", () => {
+      const active = controller.engine.storage.readActive();
+      if (!active) {
+        void vscode.window.showWarningMessage("Offshoot: No active PR.");
+        return;
+      }
+      void controller.handleMessage({ type: "revertSelection", id: active });
+    }),
     vscode.commands.registerCommand("offshoot.toggleReview", () => {
       if (controller.decorations.reviewing) {
         void controller.handleMessage({ type: "stopReview" });

@@ -222,19 +222,26 @@ function SelectedPanel({ state }: { state: SidebarState }) {
 
       <div className="actions">
         <button
-          className={`btn review ${state.reviewing ? "active" : ""}`}
-          onClick={() =>
-            send(state.reviewing ? { type: "stopReview" } : { type: "review", id })
-          }
-        >
-          Review
-        </button>
-        <button
           className="btn primary"
           title="Select lines in an open file, then click to commit only those lines"
           onClick={() => send({ type: "commitSelection", id })}
         >
           Commit Selected
+        </button>
+        <button
+          className="btn danger"
+          title="Select lines in an open file, then click to revert only those lines to baseline"
+          onClick={() => send({ type: "revertSelection", id })}
+        >
+          Revert Selected
+        </button>
+        <button
+          className={`btn review full ${state.reviewing ? "active" : ""}`}
+          onClick={() =>
+            send(state.reviewing ? { type: "stopReview" } : { type: "review", id })
+          }
+        >
+          Review
         </button>
         <button className="btn danger full" onClick={() => send({ type: "revert", id })}>
           Revert
@@ -284,17 +291,29 @@ function sortedChildren(node: TreeNode): TreeNode[] {
   });
 }
 
-function ChangesTree({ id, files }: { id: string; files: ChangedFile[] }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const root = buildTree(files);
+type Kind = ChangedFile["kind"];
 
-  const toggle = (path: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
+/** The single kind shared by every file under a node, or "mixed". */
+function nodeKind(node: TreeNode): Kind | "mixed" | null {
+  if (node.file && node.children.size === 0) return node.file.kind;
+  let k: Kind | null = null;
+  for (const child of node.children.values()) {
+    const ck = nodeKind(child);
+    if (ck === null) continue;
+    if (ck === "mixed") return "mixed";
+    if (k === null) k = ck;
+    else if (k !== ck) return "mixed";
+  }
+  return k;
+}
+
+const isFolderOp = (k: Kind | "mixed" | null) => k === "added" || k === "deleted";
+
+function ChangesTree({ id, files }: { id: string; files: ChangedFile[] }) {
+  // explicit user expand/collapse overrides; otherwise uniform add/delete
+  // folders default to collapsed (a folder-level action reads as one row).
+  const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
+  const root = buildTree(files);
 
   const render = (node: TreeNode, depth: number): ReactNode[] => {
     const rows: ReactNode[] = [];
@@ -302,20 +321,26 @@ function ChangesTree({ id, files }: { id: string; files: ChangedFile[] }) {
       const isFolder = child.children.size > 0;
       const pad = depth * 12 + 6;
       if (isFolder) {
-        const isCollapsed = collapsed.has(child.path);
+        const k = nodeKind(child);
+        const collapsed = overrides.has(child.path)
+          ? overrides.get(child.path)!
+          : isFolderOp(k);
+        const kindClass = k && k !== "mixed" ? `kind-${k}` : "";
         rows.push(
           <div
             key={child.path}
             className="folder-row"
-            style={{ paddingLeft: pad }}
-            onClick={() => toggle(child.path)}
+            style={{ marginLeft: pad }}
+            onClick={() =>
+              setOverrides((prev) => new Map(prev).set(child.path, !collapsed))
+            }
             title={child.path}
           >
-            <Chevron open={!isCollapsed} />
-            <span className="folder-name">{child.name}</span>
+            <Chevron open={!collapsed} />
+            <span className={`folder-name ${kindClass}`}>{child.name}</span>
           </div>
         );
-        if (!isCollapsed) rows.push(...render(child, depth + 1));
+        if (!collapsed) rows.push(...render(child, depth + 1));
       } else if (child.file) {
         rows.push(<FileLeaf key={child.path} id={id} f={child.file} pad={pad} />);
       }
@@ -332,7 +357,7 @@ function FileLeaf({ id, f, pad }: { id: string; f: ChangedFile; pad: number }) {
     <div className="file-row">
       <span
         className={`file-main kind-${f.kind}`}
-        style={{ paddingLeft: pad }}
+        style={{ marginLeft: pad }}
         onClick={() => send({ type: "openFileDiff", id, file: f.file })}
         title={f.file}
       >

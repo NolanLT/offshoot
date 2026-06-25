@@ -275,5 +275,22 @@ function read(root: string, rel: string): string {
   ok(!fs.existsSync(path.join(root, "newdir")), "empty added folder pruned");
 })();
 
+// --- Test 15: revert selection reverts only selected lines ---
+(function revertSelection() {
+  console.log("revert selection:");
+  const root = tmp();
+  write(root, "f.txt", "L1\nL2\nL3\nL4\n");
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  e.noteEdit("pr1", "f.txt", "L1\nL2\nL3\nL4\n");
+  write(root, "f.txt", "X1\nL2\nL3\nX4\n"); // edited lines 1 and 4
+  e.recordChange("pr1");
+  // revert only line 1 (disk lines 1-1)
+  e.revertSelection("pr1", "f.txt", 1, 1);
+  eq(read(root, "f.txt"), "L1\nL2\nL3\nX4\n", "line 1 reverted, line 4 kept");
+  const cf = e.prView("pr1").changedFiles;
+  eq(cf.length, 1, "line 4 still changed");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
