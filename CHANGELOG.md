@@ -4,6 +4,15 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The Changes list is now a **collapsible folder tree** — files are grouped under
+  their directories. Replaced the A/D/M letter tags with a **kind-colored
+  background** on each file entry (green added / red deleted / yellow modified);
+  the tint stops before the +/− counts so they stay readable.
+
 ## [0.2.1]
 
 ### Added

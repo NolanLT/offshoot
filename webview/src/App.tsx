@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { prNum } from "../../src/shared/protocol";
 import type {
   SidebarState,
@@ -212,14 +212,11 @@ function SelectedPanel({ state }: { state: SidebarState }) {
       {open && (
         <>
           {view.meta.notes && <div className="notes">{view.meta.notes}</div>}
-          <div className="files">
-            {view.changedFiles.length === 0 && (
-              <div className="muted">No changes captured yet.</div>
-            )}
-            {view.changedFiles.map((f) => (
-              <FileRow key={f.file} id={id} f={f} />
-            ))}
-          </div>
+          {view.changedFiles.length === 0 ? (
+            <div className="muted">No changes captured yet.</div>
+          ) : (
+            <ChangesTree id={id} files={view.changedFiles} />
+          )}
         </>
       )}
 
@@ -250,19 +247,96 @@ function SelectedPanel({ state }: { state: SidebarState }) {
   );
 }
 
-function FileRow({ id, f }: { id: string; f: ChangedFile }) {
-  const tag = f.kind === "added" ? "A" : f.kind === "deleted" ? "D" : "M";
+interface TreeNode {
+  name: string;
+  path: string;
+  file?: ChangedFile;
+  children: Map<string, TreeNode>;
+}
+
+function buildTree(files: ChangedFile[]): TreeNode {
+  const root: TreeNode = { name: "", path: "", children: new Map() };
+  for (const f of files) {
+    const parts = f.file.split("/");
+    let node = root;
+    let acc = "";
+    parts.forEach((part, i) => {
+      acc = acc ? `${acc}/${part}` : part;
+      let child = node.children.get(part);
+      if (!child) {
+        child = { name: part, path: acc, children: new Map() };
+        node.children.set(part, child);
+      }
+      if (i === parts.length - 1) child.file = f;
+      node = child;
+    });
+  }
+  return root;
+}
+
+/** folders first, then files; alphabetical within each. */
+function sortedChildren(node: TreeNode): TreeNode[] {
+  return [...node.children.values()].sort((a, b) => {
+    const aFolder = a.children.size > 0;
+    const bFolder = b.children.size > 0;
+    if (aFolder !== bFolder) return aFolder ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function ChangesTree({ id, files }: { id: string; files: ChangedFile[] }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const root = buildTree(files);
+
+  const toggle = (path: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+
+  const render = (node: TreeNode, depth: number): ReactNode[] => {
+    const rows: ReactNode[] = [];
+    for (const child of sortedChildren(node)) {
+      const isFolder = child.children.size > 0;
+      const pad = depth * 12 + 6;
+      if (isFolder) {
+        const isCollapsed = collapsed.has(child.path);
+        rows.push(
+          <div
+            key={child.path}
+            className="folder-row"
+            style={{ paddingLeft: pad }}
+            onClick={() => toggle(child.path)}
+            title={child.path}
+          >
+            <Chevron open={!isCollapsed} />
+            <span className="folder-name">{child.name}</span>
+          </div>
+        );
+        if (!isCollapsed) rows.push(...render(child, depth + 1));
+      } else if (child.file) {
+        rows.push(<FileLeaf key={child.path} id={id} f={child.file} pad={pad} />);
+      }
+    }
+    return rows;
+  };
+
+  return <div className="files">{render(root, 0)}</div>;
+}
+
+function FileLeaf({ id, f, pad }: { id: string; f: ChangedFile; pad: number }) {
+  const name = f.file.split("/").pop() ?? f.file;
   return (
     <div className="file-row">
       <span
-        className="file-main"
+        className={`file-main kind-${f.kind}`}
+        style={{ paddingLeft: pad }}
         onClick={() => send({ type: "openFileDiff", id, file: f.file })}
-        title="Open baseline ↔ disk diff"
+        title={f.file}
       >
-        <span className={`tag ${f.kind}`}>{tag}</span>
-        <span className="file-name" title={f.file}>
-          {f.file}
-        </span>
+        <span className="file-name">{name}</span>
       </span>
       <button
         className="icon-btn revert-file"
