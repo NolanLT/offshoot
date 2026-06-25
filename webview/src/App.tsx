@@ -164,10 +164,21 @@ function OpenPRs({ state }: { state: SidebarState }) {
                 <li
                   key={pr.id}
                   className={`pr-row ${pr.id === selectedId ? "active" : ""}`}
+                  title={pr.title}
                   onClick={() => send({ type: "selectPR", id: pr.id })}
                 >
                   <span className="pr-id">{prNum(pr.id)}</span>
                   <span className="pr-title">{pr.title}</span>
+                  <button
+                    className="icon-btn edit-pr"
+                    title="Edit title & notes"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      send({ type: "editPR", id: pr.id });
+                    }}
+                  >
+                    ✎
+                  </button>
                   <span className="pr-count" title={`${pr.changeCount} changed file(s)`}>
                     {pr.changeCount}
                   </span>
@@ -194,20 +205,13 @@ function SelectedPanel({ state }: { state: SidebarState }) {
 
   return (
     <section className="section selected">
-      <div className="selected-head-row">
-        <button className="collapse-head" onClick={toggle}>
-          <Chevron open={open} />
-          <span className="section-title pr-name">{view.meta.title}</span>
-          <span className="count">{view.changedFiles.length}</span>
-        </button>
-        <button
-          className="icon-btn"
-          title="Edit title & notes"
-          onClick={() => send({ type: "editPR", id })}
-        >
-          ✎
-        </button>
-      </div>
+      <button className="collapse-head" onClick={toggle}>
+        <Chevron open={open} />
+        <span className="section-title pr-name" title={view.meta.title}>
+          {view.meta.title}
+        </span>
+        <span className="count">{view.changedFiles.length}</span>
+      </button>
 
       {open && (
         <>
@@ -260,7 +264,9 @@ function FileRow({ id, f }: { id: string; f: ChangedFile }) {
         title="Open baseline ↔ disk diff"
       >
         <span className={`tag ${f.kind}`}>{tag}</span>
-        <span className="file-name">{f.file}</span>
+        <span className="file-name" title={f.file}>
+          {f.file}
+        </span>
         <span className="counts">
           {f.added > 0 && <span className="add">+{f.added}</span>}
           {f.removed > 0 && <span className="del">−{f.removed}</span>}

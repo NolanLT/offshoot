@@ -167,9 +167,9 @@ hr {
 }
 .pr-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
-  padding: 6px 4px;
+  padding: 5px 4px;
   cursor: pointer;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.18));
 }
@@ -189,16 +189,27 @@ hr {
 }
 .pr-title {
   flex: 1;
+  min-width: 0; /* allow ellipsis inside the flex row */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .pr-count {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   opacity: 0.6;
   min-width: 1.2em;
   text-align: right;
+}
+.edit-pr {
+  flex: 0 0 auto;
+  visibility: hidden;
+  font-size: 12px;
+  padding: 0 4px;
+}
+.pr-row:hover .edit-pr {
+  visibility: visible;
 }
 
 /* ---- selected panel ---- */
