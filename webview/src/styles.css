@@ -1,6 +1,5 @@
-:root {
-  color-scheme: light dark;
-}
+/* All colors come from VS Code theme variables, so the UI follows the active
+   light/dark/high-contrast theme automatically. */
 
 * {
   box-sizing: border-box;
@@ -19,48 +18,30 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px 8px 24px;
+  padding: 10px 10px 28px;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.brand {
-  font-weight: 600;
-  letter-spacing: 0.3px;
-}
-.badge {
-  font-size: 10px;
-  text-transform: uppercase;
-  background: rgba(255, 213, 0, 0.25);
-  color: var(--vscode-foreground);
-  border: 1px solid rgba(255, 213, 0, 0.5);
-  border-radius: 999px;
-  padding: 1px 7px;
-}
-.header .ghost {
-  margin-left: auto;
+hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  margin: 2px 0;
 }
 
-.card {
-  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
-  border-radius: 6px;
-  padding: 10px;
+.section {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--vscode-sideBar-background);
 }
-.card-title {
+
+.section-title {
   font-weight: 600;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
+/* ---- inputs ---- */
 .input {
   width: 100%;
   font-family: inherit;
@@ -72,68 +53,138 @@ body {
   border-radius: 4px;
   resize: vertical;
 }
+.input::placeholder {
+  color: var(--vscode-input-placeholderForeground, rgba(128, 128, 128, 0.7));
+}
 .input:focus {
   outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
-button {
+/* ---- stroke-style buttons: colored outline + text, tinted fill on hover ---- */
+.btn {
   font-family: inherit;
   font-size: inherit;
-  border-radius: 4px;
-  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 5px 10px;
+  border-radius: 4px;
   cursor: pointer;
-}
-.primary {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-.primary:hover {
-  background: var(--vscode-button-hoverBackground);
-}
-.ghost {
-  background: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-  border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.4));
-}
-.ghost:hover {
-  background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.15));
-}
-.danger {
   background: transparent;
-  color: var(--vscode-errorForeground, #f14c4c);
-  border-color: var(--vscode-errorForeground, #f14c4c);
+  color: var(--btn);
+  border: 1px solid var(--btn);
+  transition: background-color 0.1s ease;
 }
-.danger:hover {
-  background: rgba(241, 76, 76, 0.12);
+.btn:hover {
+  background: color-mix(in srgb, var(--btn) 16%, transparent);
+}
+.btn:active {
+  background: color-mix(in srgb, var(--btn) 26%, transparent);
+}
+.btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
+.add {
+  --btn: var(--vscode-charts-green, #3fb950);
+}
+.danger {
+  --btn: var(--vscode-charts-red, #f14c4c);
+}
+.primary {
+  --btn: var(--vscode-textLink-foreground, #3794ff);
+}
+.neutral {
+  --btn: var(--vscode-foreground);
+  opacity: 0.85;
+}
+.neutral:hover {
+  opacity: 1;
+}
+
+/* Review toggle: always labeled "Review", yellow outline unchanged in both
+   states. Active just makes the hover tint persistent as the fill. */
+.review {
+  --btn: var(--vscode-charts-yellow, #d6b300);
+}
+.review.active {
+  background: color-mix(in srgb, var(--btn) 16%, transparent);
+}
+/* keep the darker "pressed" fill even when the active fill is persistent */
+.review.active:active {
+  background: color-mix(in srgb, var(--btn) 26%, transparent);
+}
+
+.refresh {
+  width: 100%;
+  justify-content: center;
+}
+.refresh .ico {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ---- collapsible header ---- */
+.collapse-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--vscode-foreground);
+  text-align: left;
+}
+.collapse-head .chevron {
+  display: inline-block;
+  font-size: 15px;
+  line-height: 1;
+  width: 16px;
+  text-align: center;
+  opacity: 0.85;
+  transition: transform 0.12s ease;
+}
+.collapse-head .chevron.open {
+  transform: rotate(90deg);
+}
+.collapse-head .count {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
+
+/* ---- pr list: a separator line per PR ---- */
 .pr-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 .pr-row {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  padding: 5px 7px;
-  border-radius: 4px;
+  padding: 6px 4px;
   cursor: pointer;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.18));
+}
+.pr-row:first-child {
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.18));
 }
 .pr-row:hover {
   background: var(--vscode-list-hoverBackground);
 }
 .pr-row.active {
-  background: var(--vscode-list-activeSelectionBackground);
-  color: var(--vscode-list-activeSelectionForeground);
+  color: var(--vscode-textLink-foreground);
 }
 .pr-id {
   font-variant-numeric: tabular-nums;
-  opacity: 0.7;
+  opacity: 0.65;
   font-size: 11px;
 }
 .pr-title {
@@ -142,7 +193,17 @@ button {
   white-space: nowrap;
 }
 
-.selected .notes {
+/* ---- selected panel ---- */
+.pr-name {
+  flex: 1;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notes {
   white-space: pre-wrap;
   opacity: 0.85;
   font-size: 12px;
@@ -151,13 +212,12 @@ button {
 .files {
   display: flex;
   flex-direction: column;
-  gap: 1px;
 }
 .file-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 5px;
+  padding: 3px 4px;
   border-radius: 4px;
   cursor: pointer;
 }
@@ -169,16 +229,15 @@ button {
   font-weight: 700;
   width: 14px;
   text-align: center;
-  border-radius: 3px;
 }
 .tag.added {
-  color: #3fb950;
+  color: var(--vscode-charts-green, #3fb950);
 }
 .tag.deleted {
-  color: #f14c4c;
+  color: var(--vscode-charts-red, #f14c4c);
 }
 .tag.modified {
-  color: #d29922;
+  color: var(--vscode-charts-yellow, #d6b300);
 }
 .file-name {
   flex: 1;
@@ -195,18 +254,19 @@ button {
   gap: 5px;
 }
 .counts .add {
-  color: #3fb950;
+  color: var(--vscode-charts-green, #3fb950);
 }
 .counts .del {
-  color: #f14c4c;
+  color: var(--vscode-charts-red, #f14c4c);
 }
 
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
+  margin-top: 2px;
 }
-.actions .primary {
+.actions .full {
   grid-column: 1 / -1;
 }
 
@@ -214,19 +274,4 @@ button {
 .muted {
   font-size: 11px;
   opacity: 0.6;
-}
-
-.status {
-  border-radius: 4px;
-  padding: 6px 8px;
-  font-size: 12px;
-}
-.status.info {
-  background: rgba(64, 160, 255, 0.12);
-  border: 1px solid rgba(64, 160, 255, 0.35);
-}
-.status.error {
-  background: rgba(241, 76, 76, 0.12);
-  border: 1px solid rgba(241, 76, 76, 0.4);
-  color: var(--vscode-errorForeground, #f14c4c);
 }

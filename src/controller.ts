@@ -80,8 +80,11 @@ export class Controller {
     this.syncContextKey();
   }
 
+  // Feedback goes through native VS Code notifications (the custom popups the
+  // user sees), not an inline status box.
   private setStatus(kind: "info" | "error", text: string) {
-    this.status = { kind, text };
+    if (kind === "error") void showError(text);
+    else void info(text);
   }
 
   private syncContextKey() {
@@ -209,7 +212,7 @@ export class Controller {
           this.refresh();
           break;
         case "review":
-          this.cmdReview(msg.id);
+          await this.cmdReview(msg.id);
           break;
         case "stopReview":
           this.decorations.stop();
@@ -266,14 +269,42 @@ export class Controller {
     return `pr${n}`;
   }
 
-  private cmdReview(id: string) {
+  private async cmdReview(id: string) {
     if (!this.engine.storage.prExists(id)) {
       void this.handleError(Errors.prNotFound(id));
       return;
     }
     this.engine.storage.writeActive(id);
     this.decorations.start(id);
-    this.setStatus("info", `Reviewing PR #${id}. Yellow lines mark changes.`);
+
+    // Open the changed files so the yellow markers + diff lenses are actually
+    // visible — otherwise Review looks like it did nothing.
+    const view = this.engine.prView(id);
+    const openable = view.changedFiles.filter((f) => f.kind !== "deleted");
+    for (const f of openable) {
+      const uri = vscode.Uri.joinPath(
+        vscode.Uri.file(this.workspaceRoot),
+        ...f.file.split("/")
+      );
+      try {
+        await vscode.window.showTextDocument(uri, { preview: false });
+      } catch {
+        /* file may be unopenable; skip */
+      }
+    }
+    this.decorations.applyToAll();
+
+    if (openable.length === 0) {
+      this.setStatus(
+        "info",
+        `Review on for ${id}: no editable changed files yet. Edit and save a file to see markers.`
+      );
+    } else {
+      this.setStatus(
+        "info",
+        `Reviewing ${openable.length} file(s): yellow lines mark changes — click the “↔ Offshoot diff” lens or a file in the panel to see the split diff.`
+      );
+    }
     this.refresh();
   }
 
@@ -285,12 +316,18 @@ export class Controller {
     );
     const exists = fs.existsSync(newUri.fsPath);
     const title = `${file} (baseline ↔ disk)`;
+    // Open in the active editor group as a preview tab so it reuses one tab
+    // instead of piling up a new tab per click.
+    const opts: vscode.TextDocumentShowOptions = {
+      preview: true,
+      viewColumn: vscode.ViewColumn.Active
+    };
     if (exists) {
-      await vscode.commands.executeCommand("vscode.diff", oldUri, newUri, title);
+      await vscode.commands.executeCommand("vscode.diff", oldUri, newUri, title, opts);
     } else {
       // file deleted on disk: show baseline against an empty doc
       const empty = vscode.Uri.from({ scheme: "offshoot-baseline", path: "/__empty__", query: "pr=__none__" });
-      await vscode.commands.executeCommand("vscode.diff", oldUri, empty, title);
+      await vscode.commands.executeCommand("vscode.diff", oldUri, empty, title, opts);
     }
   }
 
@@ -501,7 +538,6 @@ export class Controller {
     } else {
       const msg = err instanceof Error ? err.message : String(err);
       this.setStatus("error", msg);
-      void showError(msg);
       this.refresh();
     }
   }

@@ -24,8 +24,9 @@ Revert a PR and disk is restored to the baseline.
 1. Click the Offshoot icon in the Activity Bar.
 2. **Open PR** with a title (and optional notes / custom id).
 3. Edit and save files — changes are captured automatically against the baseline.
-4. **Review** to paint yellow markers on changed lines; click a file (or the
-   "↔ Offshoot diff" lens) to open the native red/green split diff.
+4. **Review** to paint changes directly in the editor — green for added, blue
+   for modified, and removed lines shown inline in red (hover for the full text).
+   Click a file (or the "↔ Offshoot diff" lens) to open the native split diff.
 5. **Commit** to make it permanent, **Revert** to roll back, or **Commit
    selection** to finalize just the lines you've selected.
 

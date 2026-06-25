@@ -4,7 +4,7 @@ import type {
   ToWebview,
   ChangedFile
 } from "../../src/shared/protocol";
-import { send } from "./vscodeApi";
+import { send, vscode } from "./vscodeApi";
 
 const EMPTY: SidebarState = {
   hasWorkspace: true,
@@ -14,6 +14,20 @@ const EMPTY: SidebarState = {
   reviewing: false,
   status: null
 };
+
+/** "pr1" -> "1"; custom ids like "auth" -> "auth". No leading # — reads like a
+ *  line number. */
+function prNum(id: string): string {
+  return id.replace(/^pr(?=\d)/, "");
+}
+
+function getFlag(key: string, fallback: boolean): boolean {
+  const v = vscode.getState<Record<string, unknown>>()?.[key];
+  return typeof v === "boolean" ? v : fallback;
+}
+function setFlag(key: string, value: boolean) {
+  vscode.setState({ ...(vscode.getState<Record<string, unknown>>() ?? {}), [key]: value });
+}
 
 export function App() {
   const [state, setState] = useState<SidebarState>(EMPTY);
@@ -29,27 +43,32 @@ export function App() {
 
   return (
     <div className="app">
-      <Header reviewing={state.reviewing} />
-      {state.status && (
-        <div className={`status ${state.status.kind}`}>{state.status.text}</div>
-      )}
+      <button
+        className="btn neutral refresh"
+        onClick={() => send({ type: "refresh" })}
+        title="Re-scan .offshoot for PRs and refresh the view"
+      >
+        <span className="ico">⟳</span> Refresh
+      </button>
+
+      <hr />
       <NewPR />
-      <PRList state={state} />
-      <SelectedPanel state={state} />
+
+      <hr />
+      <OpenPRs state={state} />
+
+      {state.selected && (
+        <>
+          <hr />
+          <SelectedPanel state={state} />
+        </>
+      )}
     </div>
   );
 }
 
-function Header({ reviewing }: { reviewing: boolean }) {
-  return (
-    <div className="header">
-      <span className="brand">Offshoot</span>
-      {reviewing && <span className="badge">Reviewing</span>}
-      <button className="ghost" onClick={() => send({ type: "refresh" })} title="Refresh">
-        ⟳
-      </button>
-    </div>
-  );
+function Chevron({ open }: { open: boolean }) {
+  return <span className={`chevron ${open ? "open" : ""}`}>▸</span>;
 }
 
 function NewPR() {
@@ -66,8 +85,8 @@ function NewPR() {
   };
 
   return (
-    <section className="card">
-      <div className="card-title">New PR</div>
+    <section className="section">
+      <div className="section-title">New Pull Request</div>
       <input
         className="input"
         placeholder="Title"
@@ -87,93 +106,140 @@ function NewPR() {
         value={id}
         onChange={(e) => setId(e.target.value)}
       />
-      <button className="primary" onClick={open}>
-        Open PR
+      <button className="btn add" onClick={open}>
+        Open Pull Request
       </button>
     </section>
   );
 }
 
-function PRList({ state }: { state: SidebarState }) {
-  if (state.prs.length === 0) {
-    return (
-      <section className="card">
-        <div className="card-title">Open PRs</div>
-        <div className="muted">No open PRs. Edit files after opening one to track changes.</div>
-      </section>
-    );
-  }
+function OpenPRs({ state }: { state: SidebarState }) {
+  const [expanded, setExpanded] = useState<boolean>(getFlag("prsOpen", true));
+  const [query, setQuery] = useState("");
+
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    setFlag("prsOpen", next);
+  };
+
   const selectedId = state.selected?.meta.id ?? state.activePrId;
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? state.prs.filter(
+        (pr) =>
+          pr.id.toLowerCase().includes(q) ||
+          prNum(pr.id).toLowerCase().includes(q) ||
+          pr.title.toLowerCase().includes(q)
+      )
+    : state.prs;
+
   return (
-    <section className="card">
-      <div className="card-title">Open PRs</div>
-      <ul className="pr-list">
-        {state.prs.map((pr) => (
-          <li
-            key={pr.id}
-            className={`pr-row ${pr.id === selectedId ? "active" : ""}`}
-            onClick={() => send({ type: "selectPR", id: pr.id })}
-          >
-            <span className="pr-id">#{pr.id}</span>
-            <span className="pr-title">{pr.title}</span>
-          </li>
-        ))}
-      </ul>
+    <section className="section">
+      <button className="collapse-head" onClick={toggle}>
+        <Chevron open={expanded} />
+        <span className="section-title">Open PRs</span>
+        <span className="count">{state.prs.length}</span>
+      </button>
+
+      {expanded && (
+        <>
+          {state.prs.length > 0 && (
+            <input
+              className="input search"
+              placeholder="Search PRs…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          )}
+          {state.prs.length === 0 ? (
+            <div className="muted">
+              No open PRs. Open one, then edit files to track changes.
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="muted">No PRs match “{query}”.</div>
+          ) : (
+            <ul className="pr-list">
+              {filtered.map((pr) => (
+                <li
+                  key={pr.id}
+                  className={`pr-row ${pr.id === selectedId ? "active" : ""}`}
+                  onClick={() => send({ type: "selectPR", id: pr.id })}
+                >
+                  <span className="pr-id">{prNum(pr.id)}</span>
+                  <span className="pr-title">{pr.title}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </section>
   );
 }
 
 function SelectedPanel({ state }: { state: SidebarState }) {
-  const view = state.selected;
-  if (!view) return null;
+  const view = state.selected!;
   const id = view.meta.id;
+  const [open, setOpen] = useState<boolean>(getFlag("changesOpen", true));
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    setFlag("changesOpen", next);
+  };
 
   return (
-    <section className="card selected">
-      <div className="card-title">
-        PR #{id} — {view.meta.title}
-      </div>
-      {view.meta.notes && <div className="notes">{view.meta.notes}</div>}
+    <section className="section selected">
+      <button className="collapse-head" onClick={toggle}>
+        <Chevron open={open} />
+        <span className="section-title pr-name">{view.meta.title}</span>
+        <span className="count">{view.changedFiles.length}</span>
+      </button>
 
-      <div className="files">
-        {view.changedFiles.length === 0 && (
-          <div className="muted">No changes captured yet.</div>
-        )}
-        {view.changedFiles.map((f) => (
-          <FileRow key={f.file} id={id} f={f} />
-        ))}
-      </div>
+      {open && (
+        <>
+          {view.meta.notes && <div className="notes">{view.meta.notes}</div>}
+          <div className="files">
+            {view.changedFiles.length === 0 && (
+              <div className="muted">No changes captured yet.</div>
+            )}
+            {view.changedFiles.map((f) => (
+              <FileRow key={f.file} id={id} f={f} />
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="actions">
-        {state.reviewing ? (
-          <button className="ghost" onClick={() => send({ type: "stopReview" })}>
-            Stop review
-          </button>
-        ) : (
-          <button className="ghost" onClick={() => send({ type: "review", id })}>
-            Review
-          </button>
-        )}
-        <button className="ghost" onClick={() => send({ type: "commitSelection", id })}>
-          Commit selection
+        <button
+          className={`btn review ${state.reviewing ? "active" : ""}`}
+          onClick={() =>
+            send(state.reviewing ? { type: "stopReview" } : { type: "review", id })
+          }
+        >
+          Review
         </button>
-        <button className="danger" onClick={() => send({ type: "revert", id })}>
+        <button
+          className="btn primary"
+          title="Select lines in an open file, then click to commit only those lines"
+          onClick={() => send({ type: "commitSelection", id })}
+        >
+          Commit Selected
+        </button>
+        <button className="btn danger full" onClick={() => send({ type: "revert", id })}>
           Revert
         </button>
-        <button className="primary" onClick={() => send({ type: "commit", id })}>
+        <button className="btn add full" onClick={() => send({ type: "commit", id })}>
           Commit
         </button>
-      </div>
-      <div className="hint">
-        Commit deletes the baseline — it can’t be undone. Revert restores it.
       </div>
     </section>
   );
 }
 
 function FileRow({ id, f }: { id: string; f: ChangedFile }) {
-  const tag =
-    f.kind === "added" ? "A" : f.kind === "deleted" ? "D" : "M";
+  const tag = f.kind === "added" ? "A" : f.kind === "deleted" ? "D" : "M";
   return (
     <div
       className="file-row"

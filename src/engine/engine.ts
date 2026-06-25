@@ -213,7 +213,38 @@ export class Engine {
     return { meta, changedFiles };
   }
 
-  /** Disk-coordinate line ranges that changed, for the yellow markers. */
+  /** Per-line classification for in-editor red/green/blue decorations.
+   *  `added`/`modified` are disk line numbers (1-based). `deleted` carries the
+   *  old text removed at each disk position so it can be shown inline in red. */
+  decorationData(
+    prId: string,
+    file: string
+  ): {
+    added: number[];
+    modified: number[];
+    deleted: Array<{ line: number; texts: string[] }>;
+  } {
+    const deltas = this.storage.readDeltas(prId);
+    const added: number[] = [];
+    const modified: number[] = [];
+    const delMap = new Map<number, string[]>();
+    for (const op of deltas.ops) {
+      if (op.file !== file) continue;
+      if (op.type === "addLine") added.push(op.line);
+      else if (op.type === "editLine") modified.push(op.line);
+      else if (op.type === "delLine") {
+        const arr = delMap.get(op.line) ?? [];
+        arr.push(op.old);
+        delMap.set(op.line, arr);
+      }
+    }
+    const deleted = [...delMap.entries()]
+      .map(([line, texts]) => ({ line, texts }))
+      .sort((a, b) => a.line - b.line);
+    return { added, modified, deleted };
+  }
+
+  /** Disk-coordinate line ranges that changed, for review markers / lenses. */
   changedLineRanges(prId: string, file: string): Array<[number, number]> {
     const deltas = this.storage.readDeltas(prId);
     const lines = new Set<number>();
