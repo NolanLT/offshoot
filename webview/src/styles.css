@@ -294,6 +294,7 @@ hr {
 }
 .file-name {
   flex: 1;
+  min-width: 0; /* allow ellipsis inside the flex row */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -301,6 +302,7 @@ hr {
   text-align: left;
 }
 .counts {
+  flex: 0 0 auto;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   display: flex;

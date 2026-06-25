@@ -267,10 +267,6 @@ function FileRow({ id, f }: { id: string; f: ChangedFile }) {
         <span className="file-name" title={f.file}>
           {f.file}
         </span>
-        <span className="counts">
-          {f.added > 0 && <span className="add">+{f.added}</span>}
-          {f.removed > 0 && <span className="del">−{f.removed}</span>}
-        </span>
       </span>
       <button
         className="icon-btn revert-file"
@@ -279,6 +275,10 @@ function FileRow({ id, f }: { id: string; f: ChangedFile }) {
       >
         ↩
       </button>
+      <span className="counts">
+        {f.added > 0 && <span className="add">+{f.added}</span>}
+        {f.removed > 0 && <span className="del">−{f.removed}</span>}
+      </span>
     </div>
   );
 }
