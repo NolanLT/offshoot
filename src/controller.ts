@@ -84,8 +84,7 @@ export class Controller {
 
     // Initialize the status bar (and context key) immediately on activation,
     // before the view is ever opened.
-    this.updateStatusBar(this.engine.listPRs().length);
-    this.syncContextKey();
+    this.refresh();
   }
 
   // ---------------- webview wiring ----------------
@@ -96,12 +95,17 @@ export class Controller {
   buildState(): SidebarState {
     const prs: PRListItem[] = this.engine.listPRs().map((meta) => {
       let changeCount = 0;
+      let additions = 0;
+      let removals = 0;
       try {
-        changeCount = this.engine.prView(meta.id).changedFiles.length;
+        const cf = this.engine.prView(meta.id).changedFiles;
+        changeCount = cf.length;
+        additions = cf.reduce((s, f) => s + f.added, 0);
+        removals = cf.reduce((s, f) => s + f.removed, 0);
       } catch {
         /* leave 0 */
       }
-      return { ...meta, changeCount };
+      return { ...meta, changeCount, additions, removals };
     });
     const activePrId = this.engine.storage.readActive();
     const reviewing = this.decorations.reviewing;
@@ -127,13 +131,17 @@ export class Controller {
   refresh() {
     const state = this.buildState();
     if (this.post) this.post(state);
-    this.updateStatusBar(state.prs.length);
+    const additions = state.prs.reduce((s, p) => s + p.additions, 0);
+    const removals = state.prs.reduce((s, p) => s + p.removals, 0);
+    this.updateStatusBar(state.prs.length, additions, removals);
     this.syncContextKey();
   }
 
-  private updateStatusBar(n: number) {
-    this.statusBar.text = `$(offshoot) ${n}`;
-    this.statusBar.tooltip = `Offshoot — ${n} open PR${n === 1 ? "" : "s"}. Click to open.`;
+  private updateStatusBar(n: number, additions: number, removals: number) {
+    this.statusBar.text = `$(offshoot) ${n} $(add) ${additions} $(remove) ${removals}`;
+    this.statusBar.tooltip =
+      `Offshoot — ${n} open PR${n === 1 ? "" : "s"}, ` +
+      `+${additions} / −${removals} across all PRs. Click to open.`;
     this.statusBar.show();
   }
 

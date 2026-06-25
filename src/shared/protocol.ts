@@ -44,9 +44,11 @@ export interface PRView {
   changedFiles: ChangedFile[];
 }
 
-/** A PR as shown in the open-PR list, with its change count. */
+/** A PR as shown in the open-PR list, with its change count and line totals. */
 export interface PRListItem extends PRMeta {
   changeCount: number;
+  additions: number;
+  removals: number;
 }
 
 export interface SidebarState {
