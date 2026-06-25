@@ -467,7 +467,18 @@ export class Controller {
           this.baselineProvider.refresh(prId, file);
           this.decorations.applyToAll();
         }
-        this.setStatus("info", `Reverted ${file} to baseline.`);
+        // If that was the PR's last change, close the now-empty PR so it stops
+        // counting toward the badge / cluttering the list.
+        if (this.engine.touchedFiles(prId).length === 0) {
+          if (this.decorations.prId === prId) this.decorations.stop();
+          this.engine.storage.deletePR(prId);
+          this.setStatus(
+            "info",
+            `Reverted ${file}; PR ${prId} had no remaining changes and was closed.`
+          );
+        } else {
+          this.setStatus("info", `Reverted ${file} to baseline.`);
+        }
         this.refresh();
         return;
       } catch (err) {

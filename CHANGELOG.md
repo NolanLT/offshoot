@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Reverting a PR's last remaining change via the per-file revert now closes the
+  now-empty PR, so it no longer lingers in the list or keeps the icon badge.
+
 ### Changed
 
 - Moved the PR rename (✎) button onto each open-PR row (hover-revealed, left of
