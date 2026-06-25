@@ -43,6 +43,31 @@ more than one valid fix (overlapping PRs, unsaved buffers, a missing file, a
 content mismatch), it surfaces a dialog with real action buttons instead of
 silently refusing. Data-losing choices say so in their label and ask to confirm.
 
+## Error reference
+
+When a guard stops an operation, Offshoot shows a modal titled
+**“Offshoot (Error #N): …”** with buttons for every genuine fix plus Cancel.
+Buttons that lose data say so and ask to confirm. Use this table to debug:
+
+| #  | Meaning | Choices offered |
+|----|---------|-----------------|
+| 1  | Miscellaneous / unspecified failure | Retry · Cancel |
+| 2  | PR not found (bad id) | Refresh PR list · Cancel |
+| 3  | Line out of range — stored deltas no longer line up | Re-capture (loses record) · Discard PR · Reveal folder · Cancel |
+| 4  | Content mismatch — a line changed outside this PR | Keep disk · Force baseline · Re-capture · Cancel |
+| 5  | PR id already exists | Open existing PR · Use a different id · Cancel |
+| 6  | No active PR | Open a new PR · Select an existing PR · Cancel |
+| 7  | PR folder missing / closed | Remove from list · Cancel |
+| 8  | `meta.json` unreadable | Reveal folder · Discard PR · Cancel |
+| 9  | `deltas.json` unreadable | Re-capture (loses record) · Discard PR · Reveal folder · Cancel |
+| 10 | Unsaved changes in affected files | Save & continue · Discard & continue · Cancel |
+| 11 | File no longer exists | Skip this file · Recreate from baseline · Cancel |
+| 12 | Overlap with other open PR(s) on the same file | one Commit button per overlapping PR · Commit all overlapping · Cancel |
+| 13 | No diff in the selected region | Choose another selection · Cancel |
+
+Every error offers at least one real action plus Cancel; choosing a fix re-runs
+the guard before touching disk, so a fix can’t create a new inconsistency.
+
 ## Out of scope (by design)
 
 Merge logic, commit history, branch graphs, stacked/dependent PRs, network, and

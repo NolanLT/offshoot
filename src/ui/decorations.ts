@@ -109,15 +109,18 @@ export class DecorationManager {
       const more = truncated || d.texts.length > 1 ? " (hover for full)" : "";
       const label = `  ⟵ removed: ${text || "(blank line)"}${more}`;
 
-      // Hover reveals the complete removed block + a clickable link to the diff,
-      // since the ghost text itself can't take a click.
+      // Hover reveals the complete removed block (numbered like editor lines for
+      // positioning) + a clickable link to the diff, since the ghost text itself
+      // can't take a click.
       const md = new vscode.MarkdownString();
       md.isTrusted = true;
       md.supportThemeIcons = true;
-      md.appendMarkdown(
-        `**Offshoot — removed ${d.texts.length} line${d.texts.length === 1 ? "" : "s"}**\n\n`
-      );
-      md.appendCodeblock(d.texts.join("\n"), languageFor(file));
+      const last = d.line + d.texts.length - 1;
+      const width = String(last).length;
+      const numbered = d.texts
+        .map((t, i) => String(d.line + i).padStart(width, " ") + "  " + t)
+        .join("\n");
+      md.appendCodeblock(numbered, languageFor(file));
       const args = encodeURIComponent(JSON.stringify([prId, file]));
       md.appendMarkdown(`\n[↔ Open split diff](command:offshoot.openDiffForFile?${args})`);
 
@@ -128,8 +131,7 @@ export class DecorationManager {
           after: {
             contentText: label,
             color: new vscode.ThemeColor("gitDecoration.deletedResourceForeground"),
-            fontStyle: "italic",
-            textDecoration: "line-through"
+            fontStyle: "italic"
           }
         }
       };
