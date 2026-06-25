@@ -4,7 +4,15 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.5]
+
+### Changed
+
+- **PR data now lives outside the project.** Offshoot stores its baselines in
+  VS Code's per-workspace extension storage instead of a `.offshoot/` folder at
+  the project root, so nothing is ever committed or deployed with your code and
+  no third-party project needs any ignore rules. (You can delete any leftover
+  `.offshoot/` folders from earlier versions.)
 
 ### Added
 
@@ -13,10 +21,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- The activity-bar badge now reliably clears after committing or reverting the
-  last open PR. The sidebar provider keeps a single live-view reference and
-  registers its poster once, so badge updates always target the current view
-  instead of a stale/disposed one.
+- The activity-bar badge now clears after committing/reverting the last open PR
+  without needing a window reload — the provider keeps a single live-view
+  reference, registers its poster once, and re-asserts the cleared badge across
+  ticks to work around a VS Code repaint quirk.
 
 ## [0.0.4]
 

@@ -25,9 +25,15 @@ export class Engine {
   readonly workspaceRoot: string;
   readonly storage: Storage;
 
-  constructor(workspaceRoot: string) {
+  /**
+   * @param workspaceRoot the project root (disk = source of truth lives here)
+   * @param storageDir    where Offshoot keeps its PR data. Defaults to
+   *   `<workspaceRoot>/.offshoot` (used by tests); the extension passes its
+   *   private storage dir so nothing ever lands inside the project.
+   */
+  constructor(workspaceRoot: string, storageDir?: string) {
     this.workspaceRoot = workspaceRoot;
-    this.storage = new Storage(workspaceRoot);
+    this.storage = new Storage(storageDir ?? path.join(workspaceRoot, ".offshoot"));
   }
 
   // ---------- helpers ----------

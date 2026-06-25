@@ -22,9 +22,9 @@ export interface BaselineIndex {
  * from baseline-vs-disk and serves the sidebar's change summary.
  */
 export class Storage {
-  readonly root: string; // <workspace>/.offshoot
-  constructor(workspaceRoot: string) {
-    this.root = path.join(workspaceRoot, ".offshoot");
+  readonly root: string; // the Offshoot data dir (kept OUTSIDE the project)
+  constructor(root: string) {
+    this.root = root;
   }
 
   // ---- paths ----

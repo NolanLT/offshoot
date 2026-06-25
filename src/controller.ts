@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { Engine } from "./engine/engine";
 import { Errors, OffshootError, type Resolution } from "./engine/errors";
 import { BaselineContentProvider } from "./ui/baselineProvider";
@@ -26,7 +27,13 @@ export class Controller {
   private ignore: IgnoreMatcher;
 
   constructor(readonly workspaceRoot: string, ctx: vscode.ExtensionContext) {
-    this.engine = new Engine(workspaceRoot);
+    // Keep PR data OUTSIDE the project (VS Code's per-workspace extension
+    // storage) so it can never be committed/deployed. Falls back to an
+    // in-project .offshoot only if storage is somehow unavailable.
+    const storageDir = ctx.storageUri?.fsPath
+      ? path.join(ctx.storageUri.fsPath, "offshoot")
+      : undefined;
+    this.engine = new Engine(workspaceRoot, storageDir);
     this.baselineProvider = new BaselineContentProvider(this.engine);
     this.decorations = new DecorationManager(this.engine, workspaceRoot);
     this.ignore = new IgnoreMatcher(workspaceRoot);
