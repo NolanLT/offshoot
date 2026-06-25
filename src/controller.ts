@@ -7,6 +7,7 @@ import { BaselineContentProvider } from "./ui/baselineProvider";
 import { DecorationManager } from "./ui/decorations";
 import { resolve as resolveDialog, info, error as showError } from "./ui/dialogs";
 import { IgnoreMatcher } from "./engine/ignore";
+import { resolveStorageDir } from "./engine/storagePath";
 import { prNum } from "./shared/protocol";
 import type { SidebarState, ToExt, PRListItem } from "./shared/protocol";
 
@@ -28,12 +29,10 @@ export class Controller {
   private statusBar: vscode.StatusBarItem;
 
   constructor(readonly workspaceRoot: string, ctx: vscode.ExtensionContext) {
-    // Keep PR data OUTSIDE the project (VS Code's per-workspace extension
-    // storage) so it can never be committed/deployed. Falls back to an
-    // in-project .offshoot only if storage is somehow unavailable.
-    const storageDir = ctx.storageUri?.fsPath
-      ? path.join(ctx.storageUri.fsPath, "offshoot")
-      : undefined;
+    // Keep PR data OUTSIDE the project, at a deterministic location the
+    // standalone MCP server can also compute (see resolveStorageDir). This is
+    // what lets AI control (v0.1.0) share the same PRs as the extension.
+    const storageDir = resolveStorageDir(workspaceRoot);
     this.engine = new Engine(workspaceRoot, storageDir);
     this.baselineProvider = new BaselineContentProvider(this.engine);
     this.decorations = new DecorationManager(this.engine, workspaceRoot);
@@ -63,6 +62,25 @@ export class Controller {
       vscode.workspace.onDidDeleteFiles((e) => this.onDelete(e)),
       vscode.window.onDidChangeVisibleTextEditors(() => this.decorations.applyToAll())
     );
+
+    // Watch the (out-of-project) storage dir so changes made by the MCP server
+    // — open / commit / revert from an AI — refresh the UI live. Debounced
+    // because a single save writes several files.
+    const storeWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(vscode.Uri.file(storageDir), "**/*")
+    );
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const onStoreChange = () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        if (this.decorations.reviewing) this.decorations.applyToAll();
+        this.refresh();
+      }, 150);
+    };
+    storeWatcher.onDidCreate(onStoreChange);
+    storeWatcher.onDidChange(onStoreChange);
+    storeWatcher.onDidDelete(onStoreChange);
+    ctx.subscriptions.push(storeWatcher);
 
     // Initialize the status bar (and context key) immediately on activation,
     // before the view is ever opened.

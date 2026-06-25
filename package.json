@@ -3,7 +3,7 @@
   "displayName": "Offshoot",
   "description": "Local-only PR-style review and versioning. No Git. No network. Disk is the source of truth.",
   "publisher": "LmnTrtl",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "license": "MIT",
   "engines": {
     "vscode": "^1.84.0"
@@ -113,13 +113,16 @@
     "watch:webview": "vite build --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p webview/tsconfig.json",
     "test": "esbuild test/engine.test.ts --bundle --platform=node --format=cjs --outfile=test/.out.cjs --log-level=warning && node test/.out.cjs",
+    "test:mcp": "node test/mcp.test.mjs",
     "icon": "node scripts/gen-icon.mjs",
     "font": "node scripts/gen-font.mjs",
     "package": "vsce package",
     "vsix": "npx --yes @vscode/vsce package --allow-missing-repository"
   },
   "dependencies": {
-    "diff": "^7.0.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "diff": "^7.0.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/diff": "^7.0.0",

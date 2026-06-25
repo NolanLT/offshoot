@@ -75,6 +75,32 @@ Buttons that lose data say so and ask to confirm. Use this table to debug:
 Every error offers at least one real action plus Cancel; choosing a fix re-runs
 the guard before touching disk, so a fix can’t create a new inconsistency.
 
+## AI control (MCP)
+
+Offshoot ships a Model Context Protocol server so an AI agent (e.g. Claude Code)
+can drive PRs — open, inspect, commit, and revert — on the same data the VS Code
+sidebar shows. The engine is editor-independent, and both the extension and the
+MCP server compute the same out-of-project storage location for a workspace, so
+they stay in sync (the sidebar watches that folder and refreshes live).
+
+Register it (defaults to the current working directory as the workspace):
+
+```bash
+claude mcp add offshoot --scope user -- node "<path-to-offshoot>/dist/mcp/server.cjs"
+# or pin a workspace explicitly:
+claude mcp add offshoot --scope user -- node "<...>/dist/mcp/server.cjs" --workspace "C:/path/to/project"
+```
+
+Tools: `offshoot_list_prs`, `offshoot_open_pr`, `offshoot_track_files`,
+`offshoot_changed_files`, `offshoot_pr_diff`, `offshoot_commit`,
+`offshoot_revert`, `offshoot_revert_file`, `offshoot_recapture`.
+
+**Headless capture:** because baselines are captured from pre-edit content, an AI
+editing files on its own should call `offshoot_track_files` for the files it's
+about to change *before* editing them; Offshoot then diffs the post-edit disk
+against that baseline. (When you edit in the VS Code editor, the extension
+captures baselines automatically — no tracking step needed.)
+
 ## Out of scope (by design)
 
 Merge logic, commit history, branch graphs, stacked/dependent PRs, network, and

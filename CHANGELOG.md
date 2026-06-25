@@ -4,14 +4,32 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0]
+
+### Added
+
+- **AI control via an MCP server** (`dist/mcp/server.cjs`). Exposes tools to
+  list/open/inspect/commit/revert PRs over MCP, reusing the editor-independent
+  engine. Register with `claude mcp add offshoot -- node <…>/dist/mcp/server.cjs`.
+  Tools: `offshoot_list_prs`, `offshoot_open_pr`, `offshoot_track_files`,
+  `offshoot_changed_files`, `offshoot_pr_diff`, `offshoot_commit`,
+  `offshoot_revert`, `offshoot_revert_file`, `offshoot_recapture`.
+- A status-bar item showing the Offshoot fork glyph + open-PR count (replaces the
+  unreliable activity-bar badge); click to open the view. Glyph ships as a
+  contributed icon font (`npm run font`).
 
 ### Changed
 
-- Replaced the activity-bar icon badge (which VS Code wouldn't repaint reliably
-  when clearing) with a **status-bar item** showing the Offshoot fork glyph and
-  the open-PR count. Always visible, updates live, and clicking it opens the
-  Offshoot view. The glyph ships as a contributed icon font (`npm run font`).
+- **Storage location is now deterministic and shared.** PR data lives at
+  `~/.offshoot/<workspace-hash>` (outside any project, isolated per workspace),
+  which both the extension and the MCP server compute identically so they
+  operate on the same PRs. The sidebar watches it and refreshes when the MCP
+  changes things.
+
+### Fixed
+
+- `recordChange` no longer prunes a tracked file's baseline when it momentarily
+  matches disk, so baselines captured ahead of an edit (the MCP flow) survive.
 
 ## [0.0.5]
 

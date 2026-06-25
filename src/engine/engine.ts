@@ -139,17 +139,16 @@ export class Engine {
         continue;
       }
 
-      // existed, present on disk: real line diff (or pruned if identical)
+      // existed, present on disk: real line diff. If it currently matches the
+      // baseline we emit no ops, but KEEP the entry + baseline — the file may
+      // have been tracked ahead of an edit (MCP flow), or edited back to
+      // baseline (it just won't be listed by prView). Pruning here would drop a
+      // captured baseline before it's used.
       const baseline = this.storage.hasBaselineFile(prId, file)
         ? this.storage.readBaselineFile(prId, file)
         : "";
       const disk = exists ? this.readDisk(file) : "";
-      if (baseline === disk) {
-        delete idx.files[file];
-        this.storage.removeBaselineFile(prId, file);
-        changed = true;
-        continue;
-      }
+      if (baseline === disk) continue;
       for (const op of computeLineOps(file, baseline, disk)) ops.push(op);
     }
 
