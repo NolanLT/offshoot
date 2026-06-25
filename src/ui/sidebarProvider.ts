@@ -43,13 +43,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private render(state: SidebarState) {
     const view = this.view;
     if (!view) return;
-    const n = state.prs.length;
     try {
       const msg: ToWebview = { type: "state", state };
       void view.webview.postMessage(msg);
-      // Open-PR count shown in the view's panel header (reliable, updates live).
-      // Empty string clears it cleanly — no activity-bar badge involved.
-      view.description = n ? `${n} open` : "";
     } catch {
       // view was disposed between checks; ignore
     }

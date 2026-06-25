@@ -9,8 +9,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Replaced the activity-bar icon badge (which VS Code wouldn't repaint reliably
-  when clearing) with an open-PR count shown in the sidebar view's panel header
-  (e.g. “OFFSHOOT — 2 open”). Clears cleanly and updates live.
+  when clearing) with a **status-bar item** showing the open-PR count
+  (“$(git-pull-request) Offshoot: N”). Always visible, updates live, and clicking
+  it opens the Offshoot view.
 
 ## [0.0.5]
 

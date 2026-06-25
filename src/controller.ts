@@ -25,6 +25,7 @@ export class Controller {
   /** current editor content, before each change, for baseline capture. */
   private lastContent = new Map<string, string>();
   private ignore: IgnoreMatcher;
+  private statusBar: vscode.StatusBarItem;
 
   constructor(readonly workspaceRoot: string, ctx: vscode.ExtensionContext) {
     // Keep PR data OUTSIDE the project (VS Code's per-workspace extension
@@ -37,6 +38,14 @@ export class Controller {
     this.baselineProvider = new BaselineContentProvider(this.engine);
     this.decorations = new DecorationManager(this.engine, workspaceRoot);
     this.ignore = new IgnoreMatcher(workspaceRoot);
+
+    // Status-bar item: open-PR count, click to open the Offshoot view.
+    this.statusBar = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      100
+    );
+    this.statusBar.command = "offshoot.sidebar.focus";
+    ctx.subscriptions.push(this.statusBar);
 
     // seed tracker for already-open docs
     for (const doc of vscode.workspace.textDocuments) this.seed(doc);
@@ -55,6 +64,9 @@ export class Controller {
       vscode.window.onDidChangeVisibleTextEditors(() => this.decorations.applyToAll())
     );
 
+    // Initialize the status bar (and context key) immediately on activation,
+    // before the view is ever opened.
+    this.updateStatusBar(this.engine.listPRs().length);
     this.syncContextKey();
   }
 
@@ -95,8 +107,16 @@ export class Controller {
   }
 
   refresh() {
-    if (this.post) this.post(this.buildState());
+    const state = this.buildState();
+    if (this.post) this.post(state);
+    this.updateStatusBar(state.prs.length);
     this.syncContextKey();
+  }
+
+  private updateStatusBar(n: number) {
+    this.statusBar.text = `$(git-pull-request) Offshoot: ${n}`;
+    this.statusBar.tooltip = `Offshoot — ${n} open PR${n === 1 ? "" : "s"}. Click to open.`;
+    this.statusBar.show();
   }
 
   // Feedback goes through native VS Code notifications (the custom popups the
