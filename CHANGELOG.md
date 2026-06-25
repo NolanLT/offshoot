@@ -4,6 +4,22 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0]
+
+### Added
+
+- **Track add/delete of any file, including images and other binaries.** A new
+  image added during a PR is removed on revert; a deleted file (text or binary)
+  is restored byte-for-byte. Offshoot captures a file's exact bytes just before
+  deletion (`onWillDeleteFiles`) and stores binary baselines as raw bytes.
+  Binary file *content* changes (pixels) are intentionally not tracked — only
+  add and delete.
+
+### Notes
+
+- Deletions are captured when performed through VS Code (Explorer/editor). A file
+  deleted entirely outside VS Code can't be restored (its bytes are already gone).
+
 ## [0.1.1]
 
 ### Added

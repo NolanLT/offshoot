@@ -3,7 +3,7 @@
   "displayName": "Offshoot",
   "description": "Local-only PR-style review and versioning. No Git. No network. Disk is the source of truth.",
   "publisher": "LmnTrtl",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "MIT",
   "engines": {
     "vscode": "^1.84.0"

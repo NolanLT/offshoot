@@ -9,6 +9,8 @@ import type { Deltas, PRMeta } from "../shared/protocol";
 export interface BaselineEntry {
   existed: boolean;
   deleted: boolean;
+  /** baseline content is raw bytes (e.g. a deleted image), not text. */
+  binary?: boolean;
 }
 
 export interface BaselineIndex {
@@ -106,7 +108,11 @@ export class Storage {
   readBaselineFile(id: string, file: string): string {
     return fs.readFileSync(this.baselineFilePath(id, file), "utf8");
   }
-  writeBaselineFile(id: string, file: string, content: string) {
+  /** Raw bytes — for binary baselines (e.g. a deleted image). */
+  readBaselineFileBytes(id: string, file: string): Buffer {
+    return fs.readFileSync(this.baselineFilePath(id, file));
+  }
+  writeBaselineFile(id: string, file: string, content: string | Buffer) {
     const p = this.baselineFilePath(id, file);
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, content);

@@ -104,6 +104,14 @@ about to change *before* editing them; Offshoot then diffs the post-edit disk
 against that baseline. (When you edit in the VS Code editor, the extension
 captures baselines automatically — no tracking step needed.)
 
+## Files & images
+
+Adding a file of any type during a PR is undone on revert; deleting a file —
+text or binary (e.g. an image) — restores it byte-for-byte, because Offshoot
+saves its bytes just before deletion. Binary *content* changes (editing an
+image's pixels) are not tracked — only add and delete. Deletions are captured
+when performed through VS Code.
+
 ## Out of scope (by design)
 
 Merge logic, commit history, branch graphs, stacked/dependent PRs, network, and

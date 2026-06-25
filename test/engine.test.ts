@@ -204,5 +204,40 @@ function read(root: string, rel: string): string {
   eq(m.notes, "new notes", "notes updated");
 })();
 
+// --- Test 11: delete a binary file -> revert restores exact bytes ---
+(function binaryDeleteRevert() {
+  console.log("binary delete revert:");
+  const root = tmp();
+  const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0xff, 0x00, 0x42]);
+  fs.writeFileSync(path.join(root, "logo.png"), bytes);
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  // simulate onWillDelete capturing bytes before deletion
+  e.noteDelete("pr1", "logo.png", bytes);
+  fs.rmSync(path.join(root, "logo.png"));
+  e.recordChange("pr1");
+  const cf = e.prView("pr1").changedFiles;
+  eq(cf.length, 1, "one changed file");
+  eq(cf[0].kind, "deleted", "kind deleted");
+  e.revert("pr1");
+  const restored = fs.readFileSync(path.join(root, "logo.png"));
+  ok(restored.equals(bytes), "binary file restored with exact bytes");
+})();
+
+// --- Test 12: add a binary file -> revert deletes it ---
+(function binaryAddRevert() {
+  console.log("binary add revert:");
+  const root = tmp();
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  e.noteCreate("pr1", "new.png");
+  fs.writeFileSync(path.join(root, "new.png"), Buffer.from([0x00, 0x10, 0x00, 0x7f]));
+  e.recordChange("pr1");
+  const cf = e.prView("pr1").changedFiles;
+  eq(cf[0].kind, "added", "kind added");
+  e.revert("pr1");
+  ok(!fs.existsSync(path.join(root, "new.png")), "revert deletes added binary");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

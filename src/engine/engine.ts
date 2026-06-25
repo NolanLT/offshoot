@@ -8,7 +8,7 @@ import type {
   PRMeta,
   PRView
 } from "../shared/protocol";
-import { Storage, type BaselineIndex } from "./storage";
+import { Storage, type BaselineIndex, type BaselineEntry } from "./storage";
 import { computeLineOps, summarizeFile } from "./diff";
 import { Errors } from "./errors";
 
@@ -70,12 +70,17 @@ export class Engine {
   }
 
   // ---------- baseline capture (called from VS Code events) ----------
-  /** First edit of an existing file: stash its pre-edit content as baseline. */
-  noteEdit(prId: string, file: string, priorContent: string) {
+  /** First edit of an existing file: stash its pre-edit content as baseline.
+   *  Accepts bytes so binaries (images) tracked ahead of a delete keep exact
+   *  content; binary files are never line-diffed (we don't track pixel changes). */
+  noteEdit(prId: string, file: string, priorContent: string | Buffer) {
     const idx = this.storage.readBaselineIndex(prId);
     if (idx.files[file]) return; // already captured
-    idx.files[file] = { existed: true, deleted: false };
-    this.storage.writeBaselineFile(prId, file, priorContent);
+    const buf = Buffer.isBuffer(priorContent)
+      ? priorContent
+      : Buffer.from(priorContent, "utf8");
+    idx.files[file] = { existed: true, deleted: false, binary: isBinaryBuffer(buf) };
+    this.storage.writeBaselineFile(prId, file, buf);
     this.storage.writeBaselineIndex(prId, idx);
   }
 
@@ -87,18 +92,24 @@ export class Engine {
     this.storage.writeBaselineIndex(prId, idx);
   }
 
-  /** A file deleted from disk: keep its full old content for recreation. */
-  noteDelete(prId: string, file: string, priorContent: string) {
+  /** A file deleted from disk: keep its full old content (bytes, so images work)
+   *  for recreation on revert. Pass the file's content captured BEFORE deletion. */
+  noteDelete(prId: string, file: string, priorContent: string | Buffer) {
+    const buf = Buffer.isBuffer(priorContent)
+      ? priorContent
+      : Buffer.from(priorContent, "utf8");
+    const binary = isBinaryBuffer(buf);
     const idx = this.storage.readBaselineIndex(prId);
     const entry = idx.files[file];
     if (!entry) {
       // never touched before: it existed at baseline, now gone
-      idx.files[file] = { existed: true, deleted: true };
-      this.storage.writeBaselineFile(prId, file, priorContent);
+      idx.files[file] = { existed: true, deleted: true, binary };
+      this.storage.writeBaselineFile(prId, file, buf);
     } else {
       entry.deleted = true;
       if (entry.existed && !this.storage.hasBaselineFile(prId, file)) {
-        this.storage.writeBaselineFile(prId, file, priorContent);
+        entry.binary = binary;
+        this.storage.writeBaselineFile(prId, file, buf);
       }
     }
     this.storage.writeBaselineIndex(prId, idx);
@@ -124,20 +135,27 @@ export class Engine {
       }
 
       if (entry.existed && entry.deleted && !exists) {
+        // binary deleted files keep their bytes in the baseline, not deltas
         ops.push({
           type: "delFile",
           file,
-          old: this.storage.readBaselineFile(prId, file)
+          old: entry.binary ? "<binary>" : this.storage.readBaselineFile(prId, file)
         });
         continue;
       }
 
       if (!entry.existed && exists) {
         ops.push({ type: "addFile", file });
-        // also record the line additions for completeness
-        for (const op of computeLineOps(file, "", this.readDisk(file))) ops.push(op);
+        // line-level adds only for text; binaries (e.g. images) are file-level
+        if (!isBinaryBuffer(fs.readFileSync(this.abs(file)))) {
+          for (const op of computeLineOps(file, "", this.readDisk(file))) ops.push(op);
+        }
         continue;
       }
+
+      // binary file still present: we don't track content/pixel changes, only
+      // add/delete — so emit nothing (keep the baseline in case it's deleted).
+      if (entry.binary) continue;
 
       // existed, present on disk: real line diff. If it currently matches the
       // baseline we emit no ops, but KEEP the entry + baseline — the file may
@@ -196,16 +214,25 @@ export class Engine {
       if (!entry.existed && (entry.deleted || !exists)) continue;
 
       if (entry.existed && entry.deleted && !exists) {
-        const baseline = this.storage.hasBaselineFile(prId, file)
-          ? this.storage.readBaselineFile(prId, file)
-          : "";
-        changedFiles.push(summarizeFile(file, baseline, "", "deleted"));
+        if (entry.binary) {
+          changedFiles.push({ file, added: 0, removed: 0, kind: "deleted" });
+        } else {
+          const baseline = this.storage.hasBaselineFile(prId, file)
+            ? this.storage.readBaselineFile(prId, file)
+            : "";
+          changedFiles.push(summarizeFile(file, baseline, "", "deleted"));
+        }
         continue;
       }
       if (!entry.existed && exists) {
-        changedFiles.push(summarizeFile(file, "", this.readDisk(file), "added"));
+        if (isBinaryBuffer(fs.readFileSync(this.abs(file)))) {
+          changedFiles.push({ file, added: 0, removed: 0, kind: "added" });
+        } else {
+          changedFiles.push(summarizeFile(file, "", this.readDisk(file), "added"));
+        }
         continue;
       }
+      if (entry.binary) continue; // present binary: not a tracked change
       const baseline = this.storage.hasBaselineFile(prId, file)
         ? this.storage.readBaselineFile(prId, file)
         : "";
@@ -268,18 +295,31 @@ export class Engine {
     this.storage.deletePR(prId);
   }
 
+  /** Write one file back to its PR baseline (delete if it was added; restore
+   *  raw bytes for binary baselines like images; else restore text). */
+  private restoreBaseline(prId: string, file: string, entry: BaselineEntry): void {
+    const abs = this.abs(file);
+    if (!entry.existed) {
+      if (fs.existsSync(abs)) fs.rmSync(abs); // was created in this PR
+      return;
+    }
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    if (entry.binary && this.storage.hasBaselineFile(prId, file)) {
+      fs.writeFileSync(abs, this.storage.readBaselineFileBytes(prId, file));
+    } else {
+      const content = this.storage.hasBaselineFile(prId, file)
+        ? this.storage.readBaselineFile(prId, file)
+        : "";
+      fs.writeFileSync(abs, content);
+    }
+  }
+
   // ---------- revert ----------
   revert(prId: string): void {
     if (!this.storage.prExists(prId)) throw Errors.prNotFound(prId);
-    const map = this.reconstructBaseline(prId);
-    for (const [file, content] of map) {
-      const abs = this.abs(file);
-      if (content === null) {
-        if (fs.existsSync(abs)) fs.rmSync(abs);
-      } else {
-        fs.mkdirSync(path.dirname(abs), { recursive: true });
-        fs.writeFileSync(abs, content);
-      }
+    const idx = this.storage.readBaselineIndex(prId);
+    for (const [file, entry] of Object.entries(idx.files)) {
+      this.restoreBaseline(prId, file, entry);
     }
     this.storage.deletePR(prId);
   }
@@ -290,16 +330,7 @@ export class Engine {
     const idx = this.storage.readBaselineIndex(prId);
     const entry = idx.files[file];
     if (!entry) return;
-    const abs = this.abs(file);
-    if (!entry.existed) {
-      if (fs.existsSync(abs)) fs.rmSync(abs); // was created in this PR
-    } else {
-      const content = this.storage.hasBaselineFile(prId, file)
-        ? this.storage.readBaselineFile(prId, file)
-        : "";
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
-      fs.writeFileSync(abs, content);
-    }
+    this.restoreBaseline(prId, file, entry);
     delete idx.files[file];
     this.storage.removeBaselineFile(prId, file);
     this.storage.writeBaselineIndex(prId, idx);
@@ -407,6 +438,13 @@ export class Engine {
 }
 
 // ---------- module helpers ----------
+
+/** Heuristic: a NUL byte in the first 8 KB means treat it as binary. */
+function isBinaryBuffer(buf: Buffer): boolean {
+  const n = Math.min(buf.length, 8000);
+  for (let i = 0; i < n; i++) if (buf[i] === 0) return true;
+  return false;
+}
 
 function collapseRanges(sorted: number[]): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];

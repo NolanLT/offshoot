@@ -58,6 +58,7 @@ export class Controller {
       vscode.workspace.onDidOpenTextDocument((d) => this.seed(d)),
       vscode.workspace.onDidChangeTextDocument((e) => this.onChange(e)),
       vscode.workspace.onDidSaveTextDocument((d) => this.onSave(d)),
+      vscode.workspace.onWillDeleteFiles((e) => this.onWillDelete(e)),
       vscode.workspace.onDidCreateFiles((e) => this.onCreate(e)),
       vscode.workspace.onDidDeleteFiles((e) => this.onDelete(e)),
       vscode.window.onDidChangeVisibleTextEditors(() => this.decorations.applyToAll())
@@ -239,6 +240,29 @@ export class Controller {
     if (any) {
       for (const prId of this.openPrIds()) this.safeRecord(prId);
       this.refresh();
+    }
+  }
+
+  /** Capture each file's exact bytes BEFORE it's deleted (the file still exists
+   *  here), so revert can restore it — including binaries like images. Runs for
+   *  deletions initiated through VS Code. */
+  private onWillDelete(e: vscode.FileWillDeleteEvent) {
+    for (const uri of e.files) {
+      const file = this.tracked(uri);
+      if (!file) continue;
+      let bytes: Buffer;
+      try {
+        bytes = fs.readFileSync(uri.fsPath); // raw bytes; skips folders (throws)
+      } catch {
+        continue;
+      }
+      for (const prId of this.openPrIds()) {
+        try {
+          this.engine.noteDelete(prId, file, bytes);
+        } catch {
+          /* ignore */
+        }
+      }
     }
   }
 

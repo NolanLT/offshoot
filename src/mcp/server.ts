@@ -94,7 +94,7 @@ server.tool(
     for (const file of files) {
       try {
         if (fs.existsSync(abs(file))) {
-          engine.noteEdit(id, file, fs.readFileSync(abs(file), "utf8"));
+          engine.noteEdit(id, file, fs.readFileSync(abs(file))); // raw bytes (binary-safe)
         } else {
           engine.noteCreate(id, file);
         }
