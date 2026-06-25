@@ -44,29 +44,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const view = this.view;
     if (!view) return;
     const n = state.prs.length;
-    const badge = n
-      ? { value: n, tooltip: `${n} open PR${n === 1 ? "" : "s"}` }
-      : undefined;
     try {
       const msg: ToWebview = { type: "state", state };
       void view.webview.postMessage(msg);
-      view.badge = badge;
+      // Open-PR count shown in the view's panel header (reliable, updates live).
+      // Empty string clears it cleanly — no activity-bar badge involved.
+      view.description = n ? `${n} open` : "";
     } catch {
       // view was disposed between checks; ignore
-    }
-    // VS Code can fail to repaint the activity-bar badge when it goes from a
-    // number back to undefined mid-session; re-assert the cleared state on the
-    // next ticks so it actually disappears without a window reload.
-    if (badge === undefined) {
-      for (const delay of [0, 120]) {
-        setTimeout(() => {
-          try {
-            if (this.view === view) view.badge = undefined;
-          } catch {
-            /* disposed */
-          }
-        }, delay);
-      }
     }
   }
 

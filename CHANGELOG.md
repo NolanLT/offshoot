@@ -4,6 +4,14 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Replaced the activity-bar icon badge (which VS Code wouldn't repaint reliably
+  when clearing) with an open-PR count shown in the sidebar view's panel header
+  (e.g. “OFFSHOOT — 2 open”). Clears cleanly and updates live.
+
 ## [0.0.5]
 
 ### Changed
