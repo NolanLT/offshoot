@@ -279,6 +279,36 @@ export class Engine {
     this.storage.deletePR(prId);
   }
 
+  // ---------- revert a single file ----------
+  /** Restore just one file to its baseline, then drop it from the PR. */
+  revertFile(prId: string, file: string): void {
+    const idx = this.storage.readBaselineIndex(prId);
+    const entry = idx.files[file];
+    if (!entry) return;
+    const abs = this.abs(file);
+    if (!entry.existed) {
+      if (fs.existsSync(abs)) fs.rmSync(abs); // was created in this PR
+    } else {
+      const content = this.storage.hasBaselineFile(prId, file)
+        ? this.storage.readBaselineFile(prId, file)
+        : "";
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, content);
+    }
+    delete idx.files[file];
+    this.storage.removeBaselineFile(prId, file);
+    this.storage.writeBaselineIndex(prId, idx);
+    this.recordChange(prId);
+  }
+
+  // ---------- edit metadata ----------
+  editMeta(prId: string, title: string, notes: string): void {
+    const meta = this.storage.readMeta(prId);
+    meta.title = title;
+    meta.notes = notes;
+    this.storage.writeMeta(meta);
+  }
+
   // ---------- re-capture (full or scoped to one file) ----------
   recapture(prId: string, onlyFile?: string): void {
     const idx = this.storage.readBaselineIndex(prId);

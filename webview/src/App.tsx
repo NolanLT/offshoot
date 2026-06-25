@@ -168,6 +168,9 @@ function OpenPRs({ state }: { state: SidebarState }) {
                 >
                   <span className="pr-id">{prNum(pr.id)}</span>
                   <span className="pr-title">{pr.title}</span>
+                  <span className="pr-count" title={`${pr.changeCount} changed file(s)`}>
+                    {pr.changeCount}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -191,11 +194,20 @@ function SelectedPanel({ state }: { state: SidebarState }) {
 
   return (
     <section className="section selected">
-      <button className="collapse-head" onClick={toggle}>
-        <Chevron open={open} />
-        <span className="section-title pr-name">{view.meta.title}</span>
-        <span className="count">{view.changedFiles.length}</span>
-      </button>
+      <div className="selected-head-row">
+        <button className="collapse-head" onClick={toggle}>
+          <Chevron open={open} />
+          <span className="section-title pr-name">{view.meta.title}</span>
+          <span className="count">{view.changedFiles.length}</span>
+        </button>
+        <button
+          className="icon-btn"
+          title="Edit title & notes"
+          onClick={() => send({ type: "editPR", id })}
+        >
+          ✎
+        </button>
+      </div>
 
       {open && (
         <>
@@ -241,17 +253,26 @@ function SelectedPanel({ state }: { state: SidebarState }) {
 function FileRow({ id, f }: { id: string; f: ChangedFile }) {
   const tag = f.kind === "added" ? "A" : f.kind === "deleted" ? "D" : "M";
   return (
-    <div
-      className="file-row"
-      onClick={() => send({ type: "openFileDiff", id, file: f.file })}
-      title="Open baseline ↔ disk diff"
-    >
-      <span className={`tag ${f.kind}`}>{tag}</span>
-      <span className="file-name">{f.file}</span>
-      <span className="counts">
-        {f.added > 0 && <span className="add">+{f.added}</span>}
-        {f.removed > 0 && <span className="del">−{f.removed}</span>}
+    <div className="file-row">
+      <span
+        className="file-main"
+        onClick={() => send({ type: "openFileDiff", id, file: f.file })}
+        title="Open baseline ↔ disk diff"
+      >
+        <span className={`tag ${f.kind}`}>{tag}</span>
+        <span className="file-name">{f.file}</span>
+        <span className="counts">
+          {f.added > 0 && <span className="add">+{f.added}</span>}
+          {f.removed > 0 && <span className="del">−{f.removed}</span>}
+        </span>
       </span>
+      <button
+        className="icon-btn revert-file"
+        title="Revert this file to baseline"
+        onClick={() => send({ type: "revertFile", id, file: f.file })}
+      >
+        ↩
+      </button>
     </div>
   );
 }

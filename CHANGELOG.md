@@ -4,6 +4,32 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.3]
+
+### Added
+
+- **Confirmation dialogs** before Commit and Revert, each showing a summary
+  (file count, +added/−removed) and warning that the action can't be undone.
+- **Activity-bar badge** showing the number of open PRs.
+- **Default-ignore** of `.offshoot/`, `.git/`, and `node_modules/`, plus an
+  optional `.offshootignore` file (one simple glob per line) so noise is never
+  tracked.
+- **Revert a single file** to its baseline from the changes list, leaving the
+  rest of the PR open.
+- **Edit a PR's title and notes** after it's been opened.
+- **Per-PR change count** shown on the right of each row in the open-PR list.
+- **Go to Next/Previous Change** commands (`Alt+PageDown` / `Alt+PageUp` while a
+  PR is active) to jump between changed regions in the current file.
+
+### Changed
+
+- Inline removed-text decoration no longer uses strikethrough; its hover shows
+  the full removed block numbered like editor lines, plus a link to the diff.
+
+### Documentation
+
+- Added the full Error #1–#13 reference table to the README.
+
 ## [0.0.2]
 
 ### Added

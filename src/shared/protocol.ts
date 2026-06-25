@@ -38,9 +38,14 @@ export interface PRView {
   changedFiles: ChangedFile[];
 }
 
+/** A PR as shown in the open-PR list, with its change count. */
+export interface PRListItem extends PRMeta {
+  changeCount: number;
+}
+
 export interface SidebarState {
   hasWorkspace: boolean;
-  prs: PRMeta[];
+  prs: PRListItem[];
   activePrId: string | null;
   selected: PRView | null;
   reviewing: boolean;
@@ -58,6 +63,8 @@ export type ToExt =
   | { type: "openFileDiff"; id: string; file: string }
   | { type: "commit"; id: string }
   | { type: "revert"; id: string }
+  | { type: "revertFile"; id: string; file: string }
+  | { type: "editPR"; id: string }
   | { type: "commitSelection"; id: string }
   | { type: "recapture"; id: string }
   | { type: "discard"; id: string }

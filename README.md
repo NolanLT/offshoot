@@ -28,7 +28,13 @@ Revert a PR and disk is restored to the baseline.
    for modified, and removed lines shown inline in red (hover for the full text).
    Click a file (or the "↔ Offshoot diff" lens) to open the native split diff.
 5. **Commit** to make it permanent, **Revert** to roll back, or **Commit
-   selection** to finalize just the lines you've selected.
+   selected** to finalize just the lines you've selected. You can also revert a
+   single file from the changes list, and edit a PR's title/notes (✎).
+6. While a PR is active, jump between changed regions in the current file with
+   **Alt+PageDown** / **Alt+PageUp** (Offshoot: Go to Next/Previous Change).
+
+Offshoot never tracks `.offshoot/`, `.git/`, or `node_modules/`. Add a
+`.offshootignore` file at the workspace root (one glob per line) to exclude more.
 
 ## Storage
 

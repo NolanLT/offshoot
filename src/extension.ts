@@ -64,6 +64,12 @@ export function activate(ctx: vscode.ExtensionContext) {
       "offshoot.openDiffForFile",
       (prId: string, file: string) =>
         controller.handleMessage({ type: "openFileDiff", id: prId, file })
+    ),
+    vscode.commands.registerCommand("offshoot.nextChange", () =>
+      controller.jumpChange(1)
+    ),
+    vscode.commands.registerCommand("offshoot.prevChange", () =>
+      controller.jumpChange(-1)
     )
   );
 }

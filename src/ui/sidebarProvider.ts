@@ -22,6 +22,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.controller.setPoster((state) => {
       const msg: ToWebview = { type: "state", state };
       void webview.postMessage(msg);
+      // Badge on the activity-bar icon = number of open PRs.
+      const n = state.prs.length;
+      view.badge = n
+        ? { value: n, tooltip: `${n} open PR${n === 1 ? "" : "s"}` }
+        : undefined;
     });
 
     view.onDidDispose(() => this.controller.setPoster(() => {}));

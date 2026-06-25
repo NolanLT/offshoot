@@ -3,7 +3,7 @@
   "displayName": "Offshoot",
   "description": "Local-only PR-style review and versioning. No Git. No network. Disk is the source of truth.",
   "publisher": "LmnTrtl",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "license": "MIT",
   "engines": {
     "vscode": "^1.84.0"
@@ -63,6 +63,26 @@
       {
         "command": "offshoot.toggleReview",
         "title": "Offshoot: Toggle Review Markers"
+      },
+      {
+        "command": "offshoot.nextChange",
+        "title": "Offshoot: Go to Next Change"
+      },
+      {
+        "command": "offshoot.prevChange",
+        "title": "Offshoot: Go to Previous Change"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "offshoot.nextChange",
+        "key": "alt+pagedown",
+        "when": "editorTextFocus && offshoot.hasActivePR"
+      },
+      {
+        "command": "offshoot.prevChange",
+        "key": "alt+pageup",
+        "when": "editorTextFocus && offshoot.hasActivePR"
       }
     ],
     "menus": {

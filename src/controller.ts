@@ -5,7 +5,8 @@ import { Errors, OffshootError, type Resolution } from "./engine/errors";
 import { BaselineContentProvider } from "./ui/baselineProvider";
 import { DecorationManager } from "./ui/decorations";
 import { resolve as resolveDialog, info, error as showError } from "./ui/dialogs";
-import type { SidebarState, ToExt } from "./shared/protocol";
+import { IgnoreMatcher } from "./engine/ignore";
+import type { SidebarState, ToExt, PRListItem } from "./shared/protocol";
 
 /**
  * Orchestrates the whole extension: owns the Engine, captures baselines from
@@ -21,11 +22,13 @@ export class Controller {
   private status: SidebarState["status"] = null;
   /** current editor content, before each change, for baseline capture. */
   private lastContent = new Map<string, string>();
+  private ignore: IgnoreMatcher;
 
   constructor(readonly workspaceRoot: string, ctx: vscode.ExtensionContext) {
     this.engine = new Engine(workspaceRoot);
     this.baselineProvider = new BaselineContentProvider(this.engine);
     this.decorations = new DecorationManager(this.engine, workspaceRoot);
+    this.ignore = new IgnoreMatcher(workspaceRoot);
 
     // seed tracker for already-open docs
     for (const doc of vscode.workspace.textDocuments) this.seed(doc);
@@ -53,7 +56,15 @@ export class Controller {
   }
 
   buildState(): SidebarState {
-    const prs = this.engine.listPRs();
+    const prs: PRListItem[] = this.engine.listPRs().map((meta) => {
+      let changeCount = 0;
+      try {
+        changeCount = this.engine.prView(meta.id).changedFiles.length;
+      } catch {
+        /* leave 0 */
+      }
+      return { ...meta, changeCount };
+    });
     const activePrId = this.engine.storage.readActive();
     const reviewing = this.decorations.reviewing;
     const selectedId = reviewing ? this.decorations.prId : activePrId;
@@ -108,12 +119,20 @@ export class Controller {
     return rel.startsWith("..") ? null : rel;
   }
 
+  /** relFor, but excludes ignored paths (.offshoot, .git, node_modules, and
+   *  anything in .offshootignore) so they're never tracked. */
+  private tracked(uri: vscode.Uri): string | null {
+    const rel = this.relFor(uri);
+    if (!rel || this.ignore.ignores(rel)) return null;
+    return rel;
+  }
+
   private openPrIds(): string[] {
     return this.engine.storage.listPrIds();
   }
 
   private onChange(e: vscode.TextDocumentChangeEvent) {
-    const file = this.relFor(e.document.uri);
+    const file = this.tracked(e.document.uri);
     if (!file) return;
     const key = e.document.uri.toString();
     const prior = this.lastContent.get(key);
@@ -130,7 +149,9 @@ export class Controller {
   }
 
   private onSave(doc: vscode.TextDocument) {
-    const file = this.relFor(doc.uri);
+    const relRaw = this.relFor(doc.uri);
+    if (relRaw === ".offshootignore") this.ignore.reload();
+    const file = this.tracked(doc.uri);
     if (!file) return;
     this.lastContent.set(doc.uri.toString(), doc.getText());
     for (const prId of this.openPrIds()) {
@@ -150,7 +171,7 @@ export class Controller {
   private onCreate(e: vscode.FileCreateEvent) {
     let any = false;
     for (const uri of e.files) {
-      const file = this.relFor(uri);
+      const file = this.tracked(uri);
       if (!file) continue;
       for (const prId of this.openPrIds()) {
         try {
@@ -170,7 +191,7 @@ export class Controller {
   private onDelete(e: vscode.FileDeleteEvent) {
     let any = false;
     for (const uri of e.files) {
-      const file = this.relFor(uri);
+      const file = this.tracked(uri);
       if (!file) continue;
       const prior = this.lastContent.get(uri.toString()) ?? "";
       for (const prId of this.openPrIds()) {
@@ -201,7 +222,10 @@ export class Controller {
     try {
       switch (msg.type) {
         case "ready":
+          this.refresh();
+          break;
         case "refresh":
+          this.ignore.reload();
           this.refresh();
           break;
         case "openPR":
@@ -226,6 +250,12 @@ export class Controller {
           break;
         case "revert":
           await this.cmdRevert(msg.id);
+          break;
+        case "revertFile":
+          await this.cmdRevertFile(msg.id, msg.file);
+          break;
+        case "editPR":
+          await this.cmdEditPR(msg.id);
           break;
         case "commitSelection":
           await this.cmdCommitSelection(msg.id);
@@ -331,8 +361,37 @@ export class Controller {
     }
   }
 
+  /** Short "N file(s), +A/−R" summary for confirm dialogs. */
+  private summary(prId: string): string {
+    try {
+      const cf = this.engine.prView(prId).changedFiles;
+      const a = cf.reduce((s, f) => s + f.added, 0);
+      const r = cf.reduce((s, f) => s + f.removed, 0);
+      return `${cf.length} file${cf.length === 1 ? "" : "s"}, +${a}/−${r}`;
+    } catch {
+      return "no changes";
+    }
+  }
+
+  private async confirm(message: string, action: string): Promise<boolean> {
+    const pick = await vscode.window.showWarningMessage(
+      message,
+      { modal: true },
+      action
+    );
+    return pick === action;
+  }
+
   private async cmdCommit(prId: string) {
     if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    const meta = this.engine.storage.readMeta(prId);
+    if (
+      !(await this.confirm(
+        `Commit PR ${prId} — “${meta.title}”?  (${this.summary(prId)})\n\nThis deletes the baseline and cannot be undone.`,
+        "Commit"
+      ))
+    )
+      return;
     const files = this.engine.touchedFiles(prId);
     let ignoreOverlap = false;
 
@@ -358,6 +417,14 @@ export class Controller {
 
   private async cmdRevert(prId: string) {
     if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    const meta = this.engine.storage.readMeta(prId);
+    if (
+      !(await this.confirm(
+        `Revert PR ${prId} — “${meta.title}” to baseline?  (${this.summary(prId)})\n\nThis overwrites the current files on disk.`,
+        "Revert"
+      ))
+    )
+      return;
     const files = this.engine.touchedFiles(prId);
     let ignoreOverlap = false;
 
@@ -379,6 +446,94 @@ export class Controller {
         if (done) return;
       }
     }
+  }
+
+  private async cmdRevertFile(prId: string, file: string) {
+    if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    if (
+      !(await this.confirm(
+        `Revert ${file} to baseline in PR ${prId}?\n\nThis overwrites the file on disk.`,
+        "Revert File"
+      ))
+    )
+      return;
+    let ignoreOverlap = false;
+    for (;;) {
+      try {
+        await this.checkUnsaved([file]);
+        if (!ignoreOverlap) this.checkOverlap(prId, [file]);
+        this.engine.revertFile(prId, file);
+        if (this.decorations.reviewing && this.decorations.prId === prId) {
+          this.baselineProvider.refresh(prId, file);
+          this.decorations.applyToAll();
+        }
+        this.setStatus("info", `Reverted ${file} to baseline.`);
+        this.refresh();
+        return;
+      } catch (err) {
+        const res = await this.resolveOr(err);
+        if (!res) return;
+        const done = await this.applyResolution(res, prId, {
+          setIgnoreOverlap: () => (ignoreOverlap = true)
+        });
+        if (done) return;
+      }
+    }
+  }
+
+  private async cmdEditPR(prId: string) {
+    if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    const meta = this.engine.storage.readMeta(prId);
+    const title = await vscode.window.showInputBox({
+      prompt: "PR title",
+      value: meta.title
+    });
+    if (title === undefined) return; // cancelled
+    const notes =
+      (await vscode.window.showInputBox({
+        prompt: "Notes (optional)",
+        value: meta.notes
+      })) ?? meta.notes;
+    this.engine.editMeta(prId, title.trim() || meta.title, notes);
+    this.setStatus("info", `Updated PR ${prId}.`);
+    this.refresh();
+  }
+
+  /** Move the cursor to the next/prev changed region of the active PR in the
+   *  current file (dir > 0 = next, dir < 0 = previous; wraps around). */
+  jumpChange(dir: 1 | -1) {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+    const activePr = this.engine.storage.readActive();
+    if (!activePr) {
+      void info("No active PR.");
+      return;
+    }
+    const file = this.relFor(editor.document.uri);
+    if (!file) return;
+    let ranges: Array<[number, number]> = [];
+    try {
+      ranges = this.engine.changedLineRanges(activePr, file);
+    } catch {
+      ranges = [];
+    }
+    if (ranges.length === 0) {
+      void info(`No changes in this file for PR ${activePr}.`);
+      return;
+    }
+    const starts = ranges.map((r) => r[0] - 1).sort((a, b) => a - b);
+    const cur = editor.selection.active.line;
+    let target: number;
+    if (dir > 0) {
+      target = starts.find((s) => s > cur) ?? starts[0];
+    } else {
+      const before = starts.filter((s) => s < cur);
+      target = before.length ? before[before.length - 1] : starts[starts.length - 1];
+    }
+    const line = Math.min(target, editor.document.lineCount - 1);
+    const pos = new vscode.Position(line, 0);
+    editor.selection = new vscode.Selection(pos, pos);
+    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
   }
 
   private async cmdCommitSelection(prId: string) {

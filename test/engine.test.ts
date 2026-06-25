@@ -170,5 +170,39 @@ function read(root: string, rel: string): string {
   eq(e.prView("pr1").changedFiles.length, 0, "identical-to-baseline file pruned");
 })();
 
+// --- Test 9: revert a single file leaves other changes intact ---
+(function revertSingleFile() {
+  console.log("revert single file:");
+  const root = tmp();
+  write(root, "a.txt", "A\n");
+  write(root, "b.txt", "B\n");
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  e.noteEdit("pr1", "a.txt", "A\n");
+  e.noteEdit("pr1", "b.txt", "B\n");
+  write(root, "a.txt", "A2\n");
+  write(root, "b.txt", "B2\n");
+  e.recordChange("pr1");
+  eq(e.prView("pr1").changedFiles.length, 2, "two changed files");
+  e.revertFile("pr1", "a.txt");
+  eq(read(root, "a.txt"), "A\n", "a.txt restored to baseline");
+  eq(read(root, "b.txt"), "B2\n", "b.txt change untouched");
+  const cf = e.prView("pr1").changedFiles;
+  eq(cf.length, 1, "only b.txt remains changed");
+  ok(e.storage.prExists("pr1"), "PR still open after single-file revert");
+})();
+
+// --- Test 10: editMeta updates title/notes ---
+(function editMeta() {
+  console.log("edit meta:");
+  const root = tmp();
+  const e = new Engine(root);
+  e.openPR("pr1", "old", "oldnotes");
+  e.editMeta("pr1", "new title", "new notes");
+  const m = e.storage.readMeta("pr1");
+  eq(m.title, "new title", "title updated");
+  eq(m.notes, "new notes", "notes updated");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

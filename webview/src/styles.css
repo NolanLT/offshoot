@@ -188,12 +188,40 @@ hr {
   font-size: 11px;
 }
 .pr-title {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.pr-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  opacity: 0.6;
+  min-width: 1.2em;
+  text-align: right;
+}
 
 /* ---- selected panel ---- */
+.selected-head-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--vscode-foreground);
+  opacity: 0.55;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+}
+.icon-btn:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.18));
+}
 .pr-name {
   flex: 1;
   text-transform: none;
@@ -216,13 +244,27 @@ hr {
 .file-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   padding: 3px 4px;
   border-radius: 4px;
-  cursor: pointer;
 }
 .file-row:hover {
   background: var(--vscode-list-hoverBackground);
+}
+.file-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.revert-file {
+  visibility: hidden;
+  flex: 0 0 auto;
+}
+.file-row:hover .revert-file {
+  visibility: visible;
 }
 .tag {
   font-size: 10px;
