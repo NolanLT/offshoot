@@ -138,7 +138,7 @@ export class Controller {
   }
 
   private updateStatusBar(n: number, additions: number, removals: number) {
-    this.statusBar.text = `$(offshoot) ${n} $(add) ${additions} $(remove) ${removals}`;
+    this.statusBar.text = `$(repo-forked) ${n} $(add) ${additions} $(remove) ${removals}`;
     this.statusBar.tooltip =
       `Offshoot — ${n} open PR${n === 1 ? "" : "s"}, ` +
       `+${additions} / −${removals} across all PRs. Click to open.`;

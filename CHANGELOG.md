@@ -9,7 +9,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Status bar now also shows total additions ($(add)) and total removals
-  ($(remove)) across all open PRs, alongside the Offshoot glyph + PR count.
+  ($(remove)) across all open PRs, alongside the PR count.
+
+### Changed
+
+- Status bar uses the built-in `$(repo-forked)` codicon instead of a custom
+  glyph — VS Code's status bar only renders codicons, not contributed icon
+  fonts. Removed the unused icon-font build (font, script, and dev deps); the
+  activity-bar icon still uses the Offshoot SVG.
 
 ## [0.1.0]
 

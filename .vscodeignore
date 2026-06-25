@@ -4,7 +4,6 @@ src/**
 webview/**
 scripts/**
 test/**
-media/offshoot-glyph.svg
 node_modules/**
 .git/**
 **/*.ts

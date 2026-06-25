@@ -29,15 +29,6 @@
     "onStartupFinished"
   ],
   "contributes": {
-    "icons": {
-      "offshoot": {
-        "description": "Offshoot fork mark",
-        "default": {
-          "fontPath": "media/offshoot.woff",
-          "fontCharacter": "\\EA01"
-        }
-      }
-    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -115,7 +106,6 @@
     "test": "esbuild test/engine.test.ts --bundle --platform=node --format=cjs --outfile=test/.out.cjs --log-level=warning && node test/.out.cjs",
     "test:mcp": "node test/mcp.test.mjs",
     "icon": "node scripts/gen-icon.mjs",
-    "font": "node scripts/gen-font.mjs",
     "package": "vsce package",
     "vsix": "npx --yes @vscode/vsce package --allow-missing-repository"
   },
@@ -134,9 +124,6 @@
     "esbuild": "^0.24.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "svg2ttf": "^6.1.0",
-    "svgicons2svgfont": "^15.0.1",
-    "ttf2woff": "^3.0.0",
     "typescript": "^5.5.0",
     "vite": "^6.0.0"
   }
