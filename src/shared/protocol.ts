@@ -62,6 +62,8 @@ export interface LogEntry {
   files: number;
   additions: number;
   removals: number;
+  /** the changed file paths (for the expandable list). */
+  changedFiles: string[];
 }
 
 /** A file's change summary for the sidebar. */

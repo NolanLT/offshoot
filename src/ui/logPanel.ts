@@ -81,6 +81,12 @@ export class LogPanel {
   .x { cursor: pointer; opacity: 0.5; border: none; background: transparent; color: var(--vscode-foreground); font-size: 14px; }
   .x:hover { opacity: 1; color: var(--vscode-charts-red, #f14c4c); }
   .empty { opacity: 0.6; padding: 20px 0; }
+  .files-btn { cursor: pointer; background: transparent; border: none; color: var(--vscode-textLink-foreground); font-family: inherit; font-size: inherit; padding: 0; }
+  .files-btn .chev { display: inline-block; transition: transform 0.12s ease; }
+  .files-btn.open .chev { transform: rotate(90deg); }
+  .filelist { margin: 4px 0 2px; padding-left: 4px; }
+  .filelist div { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; opacity: 0.85; padding: 1px 0; }
+  .filerow td { background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent); }
 </style></head>
 <body>
   <div class="head">
@@ -102,21 +108,34 @@ export class LogPanel {
       if (!entries.length){ body.innerHTML = '<div class="empty">No closed PRs yet.</div>'; return; }
       let h = '<table><thead><tr><th>#</th><th>Title</th><th></th><th>Files</th><th>+/-</th><th>Opened</th><th>Closed</th><th>Notes</th><th></th></tr></thead><tbody>';
       entries.forEach((e, i) => {
+        const cf = e.changedFiles || [];
+        const filesCell = cf.length
+          ? '<button class="files-btn" data-fi="'+i+'"><span class="chev">▸</span> '+e.files+'</button>'
+          : '<span class="n">'+e.files+'</span>';
         h += '<tr>'
           + '<td class="num">'+esc(e.num)+'</td>'
           + '<td>'+esc(e.title)+'</td>'
           + '<td><span class="act '+e.action+'">'+e.action+'</span></td>'
-          + '<td class="n">'+e.files+'</td>'
+          + '<td>'+filesCell+'</td>'
           + '<td class="n"><span class="add">+'+e.additions+'</span> <span class="del">-'+e.removals+'</span></td>'
           + '<td>'+fmt(e.created)+'</td>'
           + '<td>'+fmt(e.closed)+'</td>'
           + '<td class="notes">'+esc(e.notes)+'</td>'
           + '<td><button class="x" data-i="'+i+'" title="Delete this entry">✕</button></td>'
           + '</tr>';
+        h += '<tr class="filerow" id="files-'+i+'" style="display:none"><td></td><td colspan="8"><div class="filelist">'
+          + cf.map(f => '<div>'+esc(f)+'</div>').join('')
+          + '</div></td></tr>';
       });
       h += '</tbody></table>';
       body.innerHTML = h;
       body.querySelectorAll(".x").forEach(b => b.onclick = () => vscode.postMessage({ type: "delete", index: Number(b.dataset.i) }));
+      body.querySelectorAll(".files-btn").forEach(b => b.onclick = () => {
+        const row = document.getElementById("files-" + b.dataset.fi);
+        const open = row.style.display === "none";
+        row.style.display = open ? "table-row" : "none";
+        b.classList.toggle("open", open);
+      });
     }
     window.addEventListener("message", ev => { if (ev.data.type === "log") render(ev.data.entries); });
     vscode.postMessage({ type: "ready" });

@@ -1,6 +1,33 @@
 import * as vscode from "vscode";
-import hljs from "highlight.js";
+import hljs from "highlight.js/lib/core";
+import typescript from "highlight.js/lib/languages/typescript";
+import javascript from "highlight.js/lib/languages/javascript";
+import json from "highlight.js/lib/languages/json";
+import css from "highlight.js/lib/languages/css";
+import scss from "highlight.js/lib/languages/scss";
+import less from "highlight.js/lib/languages/less";
+import xml from "highlight.js/lib/languages/xml";
+import markdown from "highlight.js/lib/languages/markdown";
+import python from "highlight.js/lib/languages/python";
+import rust from "highlight.js/lib/languages/rust";
+import go from "highlight.js/lib/languages/go";
+import java from "highlight.js/lib/languages/java";
+import c from "highlight.js/lib/languages/c";
+import cpp from "highlight.js/lib/languages/cpp";
+import csharp from "highlight.js/lib/languages/csharp";
+import bash from "highlight.js/lib/languages/bash";
+import yaml from "highlight.js/lib/languages/yaml";
+import sql from "highlight.js/lib/languages/sql";
+import php from "highlight.js/lib/languages/php";
+import ruby from "highlight.js/lib/languages/ruby";
 import type { Engine } from "../engine/engine";
+
+for (const [name, lang] of Object.entries({
+  typescript, javascript, json, css, scss, less, xml, markdown, python, rust,
+  go, java, c, cpp, csharp, bash, yaml, sql, php, ruby
+})) {
+  hljs.registerLanguage(name, lang as never);
+}
 
 type HunkAction = (
   kind: "commit" | "revert",
@@ -9,8 +36,6 @@ type HunkAction = (
   start: number,
   end: number
 ) => void;
-
-const TAB = 4;
 
 /**
  * A custom diff view in a WebviewPanel (opened to the right). Renders the
@@ -67,17 +92,32 @@ export class DiffPanel {
     try {
       const diff = this.engine.fileDiff(this.prId, this.file);
       const lang = langFor(this.file);
+      const tab = this.tabSizeFor(this.file, diff.rows);
       const rows = diff.rows.map((r) => ({
         kind: r.kind,
         line: r.kind === "del" ? null : r.diskLine,
         hunk: r.kind === "context" ? null : r.hunk,
-        indent: indentLevels(r.text),
+        indent: indentLevels(r.text, tab),
         html: highlight(r.text, lang)
       }));
-      void this.panel.webview.postMessage({ type: "diff", rows, hunks: diff.hunks });
+      void this.panel.webview.postMessage({ type: "diff", rows, hunks: diff.hunks, tab });
     } catch {
       /* ignore */
     }
+  }
+
+  /** Indent unit for this file: the open editor's tab size, else auto-detected
+   *  from the content's smallest indent step, else 4. */
+  private tabSizeFor(file: string, rows: { text: string }[]): number {
+    const ed = this.editorFor(file);
+    const t = ed && typeof ed.options.tabSize === "number" ? ed.options.tabSize : 0;
+    if (t >= 2) return t;
+    let min = 0;
+    for (const r of rows) {
+      const m = r.text.match(/^ +/);
+      if (m && (min === 0 || m[0].length < min)) min = m[0].length;
+    }
+    return min === 2 || min === 4 ? min : 4;
   }
 
   private onMessage(m: { type: string; start?: number; end?: number }) {
@@ -123,7 +163,7 @@ export class DiffPanel {
   body {
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--vscode-editor-font-size, 13px);
-    line-height: 1.5; tab-size: ${TAB};
+    line-height: 1.5;
     color: var(--vscode-editor-foreground);
     background: var(--vscode-editor-background);
   }
@@ -152,16 +192,26 @@ export class DiffPanel {
   .revert { --btn: var(--vscode-charts-red, #f14c4c); }
   .commit { --btn: var(--vscode-charts-green, #3fb950); }
   .empty { padding: 14px; opacity: 0.6; }
-  /* syntax colors (Dark+ approximation) */
-  .hljs-keyword,.hljs-built_in,.hljs-literal,.hljs-meta,.hljs-tag,.hljs-name,.hljs-symbol { color: #569cd6; }
-  .hljs-string,.hljs-regexp { color: #ce9178; }
-  .hljs-comment,.hljs-quote { color: #6a9955; font-style: italic; }
-  .hljs-number { color: #b5cea8; }
-  .hljs-title,.hljs-title.function_ { color: #dcdcaa; }
-  .hljs-title.class_,.hljs-type { color: #4ec9b0; }
-  .hljs-attr,.hljs-attribute,.hljs-variable,.hljs-template-variable,.hljs-property { color: #9cdcfe; }
-  .hljs-selector-tag,.hljs-selector-class,.hljs-selector-id { color: #d7ba7d; }
-  .hljs-params { color: var(--vscode-editor-foreground); }
+  /* syntax colors — Dark+ on dark themes, Light+ on light themes (the panel bg
+     follows the active theme, so colors must too) */
+  .vscode-dark .hljs-keyword,.vscode-dark .hljs-built_in,.vscode-dark .hljs-literal,.vscode-dark .hljs-meta,.vscode-dark .hljs-tag,.vscode-dark .hljs-name,.vscode-dark .hljs-symbol { color: #569cd6; }
+  .vscode-dark .hljs-string,.vscode-dark .hljs-regexp { color: #ce9178; }
+  .vscode-dark .hljs-comment,.vscode-dark .hljs-quote { color: #6a9955; }
+  .vscode-dark .hljs-number { color: #b5cea8; }
+  .vscode-dark .hljs-title,.vscode-dark .hljs-title.function_ { color: #dcdcaa; }
+  .vscode-dark .hljs-title.class_,.vscode-dark .hljs-type { color: #4ec9b0; }
+  .vscode-dark .hljs-attr,.vscode-dark .hljs-attribute,.vscode-dark .hljs-variable,.vscode-dark .hljs-template-variable,.vscode-dark .hljs-property { color: #9cdcfe; }
+  .vscode-dark .hljs-selector-tag,.vscode-dark .hljs-selector-class,.vscode-dark .hljs-selector-id { color: #d7ba7d; }
+
+  .vscode-light .hljs-keyword,.vscode-light .hljs-built_in,.vscode-light .hljs-literal,.vscode-light .hljs-meta,.vscode-light .hljs-tag,.vscode-light .hljs-name,.vscode-light .hljs-symbol { color: #0000ff; }
+  .vscode-light .hljs-string,.vscode-light .hljs-regexp { color: #a31515; }
+  .vscode-light .hljs-comment,.vscode-light .hljs-quote { color: #008000; }
+  .vscode-light .hljs-number { color: #098658; }
+  .vscode-light .hljs-title,.vscode-light .hljs-title.function_ { color: #795e26; }
+  .vscode-light .hljs-title.class_,.vscode-light .hljs-type { color: #267f99; }
+  .vscode-light .hljs-attr,.vscode-light .hljs-attribute,.vscode-light .hljs-variable,.vscode-light .hljs-template-variable,.vscode-light .hljs-property { color: #001080; }
+  .vscode-light .hljs-selector-tag,.vscode-light .hljs-selector-class,.vscode-light .hljs-selector-id { color: #800000; }
+  .hljs-comment,.hljs-quote { font-style: italic; }
 </style></head>
 <body>
   <div id="scroll"><div id="rows"></div></div>
@@ -170,6 +220,7 @@ export class DiffPanel {
     const scroller = document.getElementById("scroll");
     const rowsEl = document.getElementById("rows");
     let suppress = false;
+    let tab = 4;
 
     function lineEl(row) {
       const div = document.createElement("div");
@@ -178,11 +229,11 @@ export class DiffPanel {
       const ln = document.createElement("span");
       ln.className = "ln"; ln.textContent = row.line != null ? row.line : "";
       div.appendChild(ln);
-      // indent guides
+      // indent guides at each indent level (uses the detected indent unit)
       for (let k = 1; k <= row.indent; k++) {
         const g = document.createElement("div");
         g.className = "guide";
-        g.style.left = "calc(3.9em + " + (k * ${TAB}) + "ch)";
+        g.style.left = "calc(3.9em + " + (k * tab) + "ch)";
         div.appendChild(g);
       }
       const code = document.createElement("span");
@@ -223,7 +274,7 @@ export class DiffPanel {
 
     window.addEventListener("message", (ev) => {
       const m = ev.data;
-      if (m.type === "diff") render(m.rows, m.hunks);
+      if (m.type === "diff") { tab = m.tab || 4; rowsEl.style.tabSize = tab; render(m.rows, m.hunks); }
       else if (m.type === "scrollTo") {
         const el = rowsEl.querySelector('[data-line="' + m.diskLine + '"]');
         if (el) { suppress = true; scroller.scrollTop = el.offsetTop; setTimeout(() => suppress = false, 80); }
@@ -237,10 +288,11 @@ export class DiffPanel {
 // ---- helpers ----
 const EXT_LANG: Record<string, string> = {
   ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
-  json: "json", css: "css", scss: "scss", less: "less", html: "xml", xml: "xml",
-  md: "markdown", py: "python", rs: "rust", go: "go", java: "java", c: "c",
-  cpp: "cpp", h: "cpp", cs: "csharp", sh: "bash", yml: "yaml", yaml: "yaml",
-  php: "php", rb: "ruby", sql: "sql", swift: "swift", kt: "kotlin"
+  mjs: "javascript", cjs: "javascript", json: "json", css: "css", scss: "scss",
+  less: "less", html: "xml", xml: "xml", svg: "xml", md: "markdown",
+  py: "python", rs: "rust", go: "go", java: "java", c: "c", h: "c",
+  cpp: "cpp", hpp: "cpp", cc: "cpp", cs: "csharp", sh: "bash", bash: "bash",
+  yml: "yaml", yaml: "yaml", sql: "sql", php: "php", rb: "ruby"
 };
 
 function langFor(file: string): string | undefined {
@@ -264,14 +316,14 @@ function highlight(text: string, lang?: string): string {
 }
 
 /** Number of indent-guide levels for a line, from its leading whitespace. */
-function indentLevels(text: string): number {
+function indentLevels(text: string, tab: number): number {
   let width = 0;
   for (const ch of text) {
     if (ch === " ") width++;
-    else if (ch === "\t") width += TAB;
+    else if (ch === "\t") width += tab;
     else break;
   }
-  return Math.floor(width / TAB);
+  return Math.floor(width / tab);
 }
 
 function nonceStr(): string {

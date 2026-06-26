@@ -373,7 +373,8 @@ export class Engine {
         action,
         files: cf.length,
         additions: cf.reduce((s, f) => s + f.added, 0),
-        removals: cf.reduce((s, f) => s + f.removed, 0)
+        removals: cf.reduce((s, f) => s + f.removed, 0),
+        changedFiles: cf.map((f) => f.file)
       });
       this.storage.writeLog(log);
     } catch {
