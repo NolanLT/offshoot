@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-06-26
+
+### Changed
+
+- Commit Selection / Revert Selection now auto-close the PR when they remove its
+  last remaining change, matching Revert File. An emptied PR no longer lingers in
+  the list or counts toward the badge. (Factored the close-if-empty logic into
+  one helper so all per-file/selection paths stay in sync.)
+
 ## [0.4.1] - 2026-06-26
 
 ### Fixed

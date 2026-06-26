@@ -236,6 +236,20 @@ export class Controller {
     );
   }
 
+  /** If a per-file/selection op left the PR with no remaining changes, close it
+   *  (it just holds an empty baseline, counts toward the badge, and clutters the
+   *  list). Returns true if the PR was closed. `verb` is woven into the status. */
+  private closeIfEmpty(prId: string, verb: string): boolean {
+    if (this.engine.touchedFiles(prId).length > 0) return false;
+    if (this.decorations.prId === prId) this.decorations.stop();
+    this.engine.storage.deletePR(prId);
+    this.setStatus(
+      "info",
+      `${verb}; PR ${prNum(prId)} had no remaining changes and was closed.`
+    );
+    return true;
+  }
+
   /** Refresh decorations, the diff panel, and the sidebar after a per-file op. */
   private afterFileMutation(prId: string, file: string) {
     if (this.decorations.reviewing) {
@@ -722,16 +736,7 @@ export class Controller {
           this.baselineProvider.refresh(prId, file);
           this.decorations.applyToAll();
         }
-        // If that was the PR's last change, close the now-empty PR so it stops
-        // counting toward the badge / cluttering the list.
-        if (this.engine.touchedFiles(prId).length === 0) {
-          if (this.decorations.prId === prId) this.decorations.stop();
-          this.engine.storage.deletePR(prId);
-          this.setStatus(
-            "info",
-            `Reverted ${file}; PR ${prNum(prId)} had no remaining changes and was closed.`
-          );
-        } else {
+        if (!this.closeIfEmpty(prId, `Reverted ${file}`)) {
           this.setStatus("info", `Reverted ${file} to baseline.`);
         }
         this.refresh();
@@ -843,7 +848,9 @@ export class Controller {
         this.engine.commitSelection(prId, file, start, end);
         const ed = this.openEditorFor(file);
         if (ed?.document.isDirty) await ed.document.save();
-        this.setStatus("info", `Committed selection in ${file}.`);
+        if (!this.closeIfEmpty(prId, `Committed selection in ${file}`)) {
+          this.setStatus("info", `Committed selection in ${file}.`);
+        }
         this.afterFileMutation(prId, file);
         return;
       } catch (err) {
@@ -872,7 +879,9 @@ export class Controller {
         if (!ignoreOverlap) this.checkOverlap(prId, [file], "revert");
         this.engine.revertSelection(prId, file, start, end);
         this.syncLastContent([file]);
-        this.setStatus("info", `Reverted selection in ${file}.`);
+        if (!this.closeIfEmpty(prId, `Reverted selection in ${file}`)) {
+          this.setStatus("info", `Reverted selection in ${file}.`);
+        }
         this.afterFileMutation(prId, file);
         return;
       } catch (err) {
