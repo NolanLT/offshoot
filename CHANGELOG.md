@@ -4,6 +4,23 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1]
+
+### Fixed
+
+- **Line-ending (CRLF/LF) differences are no longer counted as changes.** A
+  baseline and disk content that differed only in line endings made every line
+  look changed (e.g. editing one line of a two-line file reported +2/−2). All
+  diffing now normalizes EOL like Git does, so counts, in-editor decorations,
+  the split diff, and change detection are correct; an EOL-only difference shows
+  as no change.
+
+### Changed
+
+- Normalized the commit/revert edge cases: `commitSelection` and
+  `revertSelection` now both refuse binary files and preserve the file's own EOL
+  on output; the baseline served to the split diff matches the disk's EOL.
+
 ## [0.3.0]
 
 ### Added

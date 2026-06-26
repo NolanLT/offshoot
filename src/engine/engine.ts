@@ -9,7 +9,7 @@ import type {
   PRView
 } from "../shared/protocol";
 import { Storage, type BaselineIndex, type BaselineEntry } from "./storage";
-import { computeLineOps, summarizeFile } from "./diff";
+import { computeLineOps, summarizeFile, normEol, eolOf } from "./diff";
 import { Errors } from "./errors";
 
 /** Result of reconstructing the pre-PR state: file -> content, or null = the
@@ -166,7 +166,7 @@ export class Engine {
         ? this.storage.readBaselineFile(prId, file)
         : "";
       const disk = exists ? this.readDisk(file) : "";
-      if (baseline === disk) continue;
+      if (normEol(baseline) === normEol(disk)) continue;
       for (const op of computeLineOps(file, baseline, disk)) ops.push(op);
     }
 
@@ -193,14 +193,18 @@ export class Engine {
     return map;
   }
 
-  /** Baseline ("old") content of a single file for the diff view. */
+  /** Baseline ("old") content of a single file for the diff view, served with
+   *  the current disk file's line endings so the split diff doesn't flag
+   *  EOL-only differences as changes. */
   baselineContent(prId: string, file: string): string {
     const idx = this.storage.readBaselineIndex(prId);
     const entry = idx.files[file];
     if (!entry || !entry.existed) return "";
-    return this.storage.hasBaselineFile(prId, file)
+    const raw = this.storage.hasBaselineFile(prId, file)
       ? this.storage.readBaselineFile(prId, file)
       : "";
+    const eol = this.diskExists(file) ? eolOf(this.readDisk(file)) : eolOf(raw);
+    return normEol(raw).split("\n").join(eol);
   }
 
   // ---------- prDiff / view ----------
@@ -237,7 +241,7 @@ export class Engine {
         ? this.storage.readBaselineFile(prId, file)
         : "";
       const disk = exists ? this.readDisk(file) : "";
-      if (baseline === disk) continue;
+      if (normEol(baseline) === normEol(disk)) continue;
       changedFiles.push(summarizeFile(file, baseline, disk, "modified"));
     }
 
@@ -391,7 +395,7 @@ export class Engine {
   commitSelection(prId: string, file: string, selStart: number, selEnd: number): void {
     const idx = this.storage.readBaselineIndex(prId);
     const entry = idx.files[file];
-    if (!entry) throw Errors.noDiffInSelection();
+    if (!entry || entry.binary) throw Errors.noDiffInSelection();
 
     const baseline = this.baselineContent(prId, file);
     const disk = this.diskExists(file) ? this.readDisk(file) : "";
@@ -528,7 +532,10 @@ function snippetBaseline(
   selStart: number,
   selEnd: number
 ): { newBaseline: string; committedAny: boolean } {
-  const parts = diffLines(baseline, disk);
+  // diff on EOL-normalized content so line-ending differences don't shift the
+  // selection; emit with the file's own EOL preserved.
+  const parts = diffLines(normEol(baseline), normEol(disk));
+  const eol = eolOf(disk);
   const out: string[] = [];
   let diskLine = 1;
   let committedAny = false;
@@ -559,8 +566,8 @@ function snippetBaseline(
     }
   }
 
-  const trailing = disk.endsWith("\n") ? "\n" : "";
-  return { newBaseline: out.length ? out.join("\n") + trailing : "", committedAny };
+  const trailing = disk.endsWith("\n") ? eol : "";
+  return { newBaseline: out.length ? out.join(eol) + trailing : "", committedAny };
 }
 
 /**
@@ -574,7 +581,8 @@ function revertSelectionDisk(
   selStart: number,
   selEnd: number
 ): { newDisk: string; revertedAny: boolean } {
-  const parts = diffLines(baseline, disk);
+  const parts = diffLines(normEol(baseline), normEol(disk));
+  const eol = eolOf(disk);
   const out: string[] = [];
   let diskLine = 1;
   let revertedAny = false;
@@ -605,6 +613,6 @@ function revertSelectionDisk(
     }
   }
 
-  const trailing = disk.endsWith("\n") ? "\n" : "";
-  return { newDisk: out.length ? out.join("\n") + trailing : "", revertedAny };
+  const trailing = disk.endsWith("\n") ? eol : "";
+  return { newDisk: out.length ? out.join(eol) + trailing : "", revertedAny };
 }

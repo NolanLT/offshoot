@@ -292,5 +292,46 @@ function read(root: string, rel: string): string {
   eq(cf.length, 1, "line 4 still changed");
 })();
 
+// --- Test 16: CRLF baseline vs LF disk, one line edited -> +1/-1 (not +2/-2) ---
+(function eolMismatchCounts() {
+  console.log("EOL mismatch counts:");
+  const root = tmp();
+  write(root, "f.txt", "alpha\nbeta\n"); // LF on disk
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  e.noteEdit("pr1", "f.txt", "alpha\r\nbeta\r\n"); // baseline captured as CRLF
+  write(root, "f.txt", "alpha\nbeta EDIT\n"); // edit one line, LF
+  e.recordChange("pr1");
+  const cf = e.prView("pr1").changedFiles;
+  eq(cf.length, 1, "one changed file");
+  eq([cf[0].added, cf[0].removed], [1, 1], "edited one line counts as +1/-1");
+})();
+
+// --- Test 17: EOL-only difference is not a change ---
+(function eolOnlyNoChange() {
+  console.log("EOL-only difference:");
+  const root = tmp();
+  write(root, "f.txt", "alpha\nbeta\n"); // LF
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  e.noteEdit("pr1", "f.txt", "alpha\r\nbeta\r\n"); // baseline CRLF, same content
+  e.recordChange("pr1");
+  eq(e.prView("pr1").changedFiles.length, 0, "EOL-only diff shows no changes");
+})();
+
+// --- Test 18: revert selection preserves the file's CRLF EOL ---
+(function revertSelectionEol() {
+  console.log("revert selection EOL:");
+  const root = tmp();
+  write(root, "f.txt", "A\r\nB\r\nC\r\n"); // CRLF file
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  e.noteEdit("pr1", "f.txt", "A\r\nB\r\nC\r\n");
+  write(root, "f.txt", "A2\r\nB\r\nC2\r\n"); // edit lines 1 and 3
+  e.recordChange("pr1");
+  e.revertSelection("pr1", "f.txt", 1, 1); // revert line 1 only
+  eq(read(root, "f.txt"), "A\r\nB\r\nC2\r\n", "line1 reverted, CRLF preserved, line3 kept");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

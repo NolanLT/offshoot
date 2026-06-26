@@ -1,6 +1,18 @@
 import { diffLines } from "diff";
 import type { ChangedFile, DeltaOp } from "../shared/protocol";
 
+/** Normalize line endings so CRLF vs LF differences are never treated as
+ *  changes (matches Git's behavior). Used for all diffing/comparison; the raw
+ *  bytes are still what gets stored and restored. */
+export function normEol(s: string): string {
+  return s.replace(/\r\n/g, "\n");
+}
+
+/** The dominant EOL of a string, for emitting content that preserves it. */
+export function eolOf(s: string): string {
+  return s.includes("\r\n") ? "\r\n" : "\n";
+}
+
 /**
  * Compute backward delta ops for ONE file: how to walk disk back to baseline.
  * `old` content is always the baseline side. New is never stored.
@@ -14,7 +26,7 @@ export function computeLineOps(
   disk: string
 ): DeltaOp[] {
   const ops: DeltaOp[] = [];
-  const parts = diffLines(baseline, disk);
+  const parts = diffLines(normEol(baseline), normEol(disk));
 
   let baseLine = 1; // 1-based line in baseline
   let diskLine = 1; // 1-based line in disk
@@ -83,7 +95,7 @@ export function summarizeFile(
 ): ChangedFile {
   let added = 0;
   let removed = 0;
-  for (const part of diffLines(baseline, disk)) {
+  for (const part of diffLines(normEol(baseline), normEol(disk))) {
     const c = part.count ?? splitLines(part.value).length;
     if (part.added) added += c;
     else if (part.removed) removed += c;
