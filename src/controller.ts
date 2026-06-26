@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { Engine } from "./engine/engine";
 import { Errors, OffshootError, type Resolution } from "./engine/errors";
 import { BaselineContentProvider } from "./ui/baselineProvider";
+import { QuickDiff } from "./ui/quickDiff";
 import { DecorationManager } from "./ui/decorations";
 import { resolve as resolveDialog, info, error as showError } from "./ui/dialogs";
 import { IgnoreMatcher } from "./engine/ignore";
@@ -36,6 +37,8 @@ export class Controller {
     this.engine = new Engine(workspaceRoot, storageDir);
     this.baselineProvider = new BaselineContentProvider(this.engine);
     this.decorations = new DecorationManager(this.engine, workspaceRoot);
+    // Native dirty-diff gutter + inline peek + Revert Change against the baseline.
+    new QuickDiff(this.engine, workspaceRoot, ctx);
     this.ignore = new IgnoreMatcher(workspaceRoot);
 
     // Status-bar item: open-PR count, click to open the Offshoot view.
@@ -192,12 +195,19 @@ export class Controller {
     const key = e.document.uri.toString();
     const prior = this.lastContent.get(key);
     if (prior !== undefined) {
+      const activePr = this.engine.storage.readActive();
+      const hadBaseline = activePr ? this.engine.hasBaseline(activePr, file) : false;
       for (const prId of this.openPrIds()) {
         try {
           this.engine.noteEdit(prId, file, prior);
         } catch {
           /* ignore capture errors */
         }
+      }
+      // When a baseline first appears, nudge the quick-diff original so the
+      // gutter decorations show up live (before any save).
+      if (activePr && !hadBaseline && this.engine.hasBaseline(activePr, file)) {
+        this.baselineProvider.refresh(activePr, file);
       }
     }
     this.lastContent.set(key, e.document.getText());

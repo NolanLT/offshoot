@@ -34,7 +34,11 @@ export class BaselineContentProvider
     const prId = params.get("pr") ?? "";
     const file = uri.path.replace(/^\//, "");
     try {
-      return this.engine.baselineContent(prId, file);
+      // If a baseline is captured (file edited in this PR), serve it; otherwise
+      // serve the current content so the gutter quick-diff shows no change.
+      return this.engine.hasBaseline(prId, file)
+        ? this.engine.baselineContent(prId, file)
+        : this.engine.currentContent(file);
     } catch {
       return "";
     }

@@ -4,6 +4,17 @@ All notable changes to Offshoot are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Native in-editor diff (experimental).** A QuickDiffProvider shows VS Code's
+  dirty-diff gutter bars against the PR baseline, with the built-in inline change
+  peek (old over new) and a "Revert Change" action — all in one tab, live as you
+  type. Registers a lightweight "Offshoot" entry in the Source Control view.
+  Runs alongside the existing decorations/CodeLens for now; those become
+  redundant once this is confirmed.
+
 ## [0.3.1]
 
 ### Fixed
