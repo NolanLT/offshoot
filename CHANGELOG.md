@@ -23,6 +23,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Custom diff panel.** Clicking a changed file opens a WebviewPanel to the
+  right, scroll-synced to the file's editor, styled like the editor. Changed
+  blocks render as grouped red (removed) / green (added) snippets — never
+  alternating — each with its own button: Revert on the red, Commit on the green
+  (per-hunk). Replaces the old split diff for the changed-file click.
 - When you edit a file with no open PR, Offshoot offers (once per workspace
   session) to open one — a notification with an "Open PR" button that runs the
   normal title prompt.

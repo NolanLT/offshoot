@@ -358,7 +358,7 @@ function FileLeaf({ id, f, pad }: { id: string; f: ChangedFile; pad: number }) {
       <span
         className={`file-main kind-${f.kind}`}
         style={{ marginLeft: pad }}
-        onClick={() => send({ type: "openFileDiff", id, file: f.file })}
+        onClick={() => send({ type: "openDiffPanel", id, file: f.file })}
         title={f.file}
       >
         <span className="file-name">{name}</span>

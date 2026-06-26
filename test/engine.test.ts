@@ -349,5 +349,22 @@ function read(root: string, rel: string): string {
   eq(e.storage.readActive(), null, "stale active cleared");
 })();
 
+// --- Test 20: fileDiff groups whole snippets (no alternating) ---
+(function fileDiffGrouping() {
+  console.log("fileDiff grouping:");
+  const root = tmp();
+  write(root, "f.txt", "a\nb\nc\nd\n");
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  e.noteEdit("pr1", "f.txt", "a\nb\nc\nd\n");
+  write(root, "f.txt", "a\nX\nY\nd\n"); // b,c -> X,Y (one changed block)
+  e.recordChange("pr1");
+  const d = e.fileDiff("pr1", "f.txt");
+  const kinds = d.rows.map((r) => r.kind).join(",");
+  eq(kinds, "context,del,del,add,add,context", "dels grouped then adds grouped");
+  eq(d.hunks.length, 1, "one hunk");
+  eq([d.hunks[0].start, d.hunks[0].end], [2, 3], "hunk covers disk lines 2-3");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

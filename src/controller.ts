@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { Engine } from "./engine/engine";
 import { Errors, OffshootError, type Resolution } from "./engine/errors";
 import { BaselineContentProvider } from "./ui/baselineProvider";
+import { DiffPanel } from "./ui/diffPanel";
 import { DecorationManager } from "./ui/decorations";
 import { resolve as resolveDialog, info, error as showError } from "./ui/dialogs";
 import { IgnoreMatcher } from "./engine/ignore";
@@ -20,6 +21,7 @@ export class Controller {
   readonly engine: Engine;
   readonly baselineProvider: BaselineContentProvider;
   readonly decorations: DecorationManager;
+  private diffPanel: DiffPanel;
 
   private post: ((state: SidebarState) => void) | null = null;
   private status: SidebarState["status"] = null;
@@ -38,6 +40,10 @@ export class Controller {
     this.engine = new Engine(workspaceRoot, storageDir);
     this.baselineProvider = new BaselineContentProvider(this.engine);
     this.decorations = new DecorationManager(this.engine, workspaceRoot);
+    this.diffPanel = new DiffPanel(this.engine, workspaceRoot, (kind, prId, file, start, end) => {
+      if (kind === "commit") void this.commitRange(prId, file, start, end);
+      else void this.revertRange(prId, file, start, end);
+    });
     this.ignore = new IgnoreMatcher(workspaceRoot);
 
     // Status-bar item: open-PR count, click to open the Offshoot view.
@@ -201,6 +207,36 @@ export class Controller {
     return this.engine.storage.listPrIds();
   }
 
+  private openEditorFor(file: string): vscode.TextEditor | undefined {
+    return vscode.window.visibleTextEditors.find(
+      (e) => e.document.uri.scheme === "file" && this.relFor(e.document.uri) === file
+    );
+  }
+
+  /** Refresh decorations, the diff panel, and the sidebar after a per-file op. */
+  private afterFileMutation(prId: string, file: string) {
+    if (this.decorations.reviewing) {
+      this.baselineProvider.refresh(prId, file);
+      this.decorations.applyToAll();
+    }
+    this.diffPanel.refresh(prId, file);
+    this.refresh();
+  }
+
+  /** Open the file (left) and the custom diff panel (right). */
+  private async openDiffPanel(prId: string, file: string) {
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(this.workspaceRoot), ...file.split("/"));
+    try {
+      await vscode.window.showTextDocument(uri, {
+        viewColumn: vscode.ViewColumn.One,
+        preview: false
+      });
+    } catch {
+      /* file may not exist on disk (deleted) — panel still shows baseline */
+    }
+    this.diffPanel.show(prId, file);
+  }
+
   /** Resync the in-memory pre-edit snapshot to disk for files the engine just
    *  rewrote (revert). Without this, a later PR captures a stale baseline. */
   private syncLastContent(files: string[]) {
@@ -271,6 +307,8 @@ export class Controller {
       this.baselineProvider.refresh(this.decorations.prId!, file);
       this.decorations.applyToAll();
     }
+    const activePr = this.engine.storage.readActive();
+    if (activePr) this.diffPanel.refresh(activePr, file);
     this.refresh();
   }
 
@@ -379,6 +417,9 @@ export class Controller {
           break;
         case "openFileDiff":
           await this.openFileDiff(msg.id, msg.file);
+          break;
+        case "openDiffPanel":
+          await this.openDiffPanel(msg.id, msg.file);
           break;
         case "commit":
           await this.cmdCommit(msg.id);
@@ -701,21 +742,34 @@ export class Controller {
     editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
   }
 
-  private async cmdCommitSelection(prId: string) {
+  /** Read the active editor's file + selected line range, or null with an error. */
+  private editorSelection(): { file: string; start: number; end: number } | null {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      void showError("Open a file and select the region to commit.");
-      return;
+      void showError("Open a file and select the region first.");
+      return null;
     }
     const file = this.relFor(editor.document.uri);
     if (!file) {
       void showError("The active file is outside the workspace.");
-      return;
+      return null;
     }
-    const sel = editor.selection;
-    const start = sel.start.line + 1;
-    const end = sel.end.line + 1;
+    return { file, start: editor.selection.start.line + 1, end: editor.selection.end.line + 1 };
+  }
 
+  private async cmdCommitSelection(prId: string) {
+    const sel = this.editorSelection();
+    if (sel) await this.commitRange(prId, sel.file, sel.start, sel.end);
+  }
+
+  private async cmdRevertSelection(prId: string) {
+    const sel = this.editorSelection();
+    if (sel) await this.revertRange(prId, sel.file, sel.start, sel.end);
+  }
+
+  /** Commit a specific disk line range of a file (used by both the editor
+   *  selection command and the diff panel's per-hunk Commit button). */
+  async commitRange(prId: string, file: string, start: number, end: number) {
     const confirm = await vscode.window.showWarningMessage(
       `Commit lines ${start}-${end} of ${file} in PR ${prNum(prId)}? Those lines become permanent.`,
       { modal: true },
@@ -727,13 +781,10 @@ export class Controller {
       try {
         this.checkOverlap(prId, [file]);
         this.engine.commitSelection(prId, file, start, end);
-        if (editor.document.isDirty) await editor.document.save();
+        const ed = this.openEditorFor(file);
+        if (ed?.document.isDirty) await ed.document.save();
         this.setStatus("info", `Committed selection in ${file}.`);
-        if (this.decorations.reviewing) {
-          this.baselineProvider.refresh(prId, file);
-          this.decorations.applyToAll();
-        }
-        this.refresh();
+        this.afterFileMutation(prId, file);
         return;
       } catch (err) {
         const res = await this.resolveOr(err);
@@ -744,21 +795,8 @@ export class Controller {
     }
   }
 
-  private async cmdRevertSelection(prId: string) {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      void showError("Open a file and select the region to revert.");
-      return;
-    }
-    const file = this.relFor(editor.document.uri);
-    if (!file) {
-      void showError("The active file is outside the workspace.");
-      return;
-    }
-    const sel = editor.selection;
-    const start = sel.start.line + 1;
-    const end = sel.end.line + 1;
-
+  /** Revert a specific disk line range of a file to baseline. */
+  async revertRange(prId: string, file: string, start: number, end: number) {
     const confirm = await vscode.window.showWarningMessage(
       `Revert lines ${start}-${end} of ${file} in PR ${prNum(prId)} to baseline? Those lines are overwritten on disk.`,
       { modal: true },
@@ -768,17 +806,13 @@ export class Controller {
 
     for (;;) {
       try {
-        // operate on saved disk content; save the buffer first if dirty
-        if (editor.document.isDirty) await editor.document.save();
+        const ed = this.openEditorFor(file);
+        if (ed?.document.isDirty) await ed.document.save();
         this.checkOverlap(prId, [file]);
         this.engine.revertSelection(prId, file, start, end);
         this.syncLastContent([file]);
         this.setStatus("info", `Reverted selection in ${file}.`);
-        if (this.decorations.reviewing) {
-          this.baselineProvider.refresh(prId, file);
-          this.decorations.applyToAll();
-        }
-        this.refresh();
+        this.afterFileMutation(prId, file);
         return;
       } catch (err) {
         const res = await this.resolveOr(err);

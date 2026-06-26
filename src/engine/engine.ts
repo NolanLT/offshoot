@@ -5,6 +5,9 @@ import type {
   ChangedFile,
   Deltas,
   DeltaOp,
+  DiffHunk,
+  DiffRow,
+  FileDiff,
   PRMeta,
   PRView
 } from "../shared/protocol";
@@ -278,6 +281,52 @@ export class Engine {
       .map(([line, texts]) => ({ line, texts }))
       .sort((a, b) => a.line - b.line);
     return { added, modified, deleted };
+  }
+
+  /** Build the grouped diff (baseline vs disk) for the custom diff panel:
+   *  unchanged "context" rows (aligned to disk lines), then per changed block a
+   *  group of removed (red) rows followed by added (green) rows — never
+   *  alternating line-by-line. Each block carries its disk line range. */
+  fileDiff(prId: string, file: string): FileDiff {
+    const baseline = this.baselineContent(prId, file);
+    const disk = this.diskExists(file) ? this.readDisk(file) : "";
+    const parts = diffLines(normEol(baseline), normEol(disk));
+    const rows: DiffRow[] = [];
+    const hunks: DiffHunk[] = [];
+    let diskLine = 1;
+    let i = 0;
+    while (i < parts.length) {
+      const part = parts[i];
+      const lines = splitLines(part.value);
+      if (!part.added && !part.removed) {
+        for (const t of lines) rows.push({ kind: "context", diskLine: diskLine++, text: t });
+        i++;
+        continue;
+      }
+      const hunk = hunks.length;
+      let removed: string[] = [];
+      let added: string[] = [];
+      if (part.removed) {
+        removed = lines;
+        i++;
+        if (i < parts.length && parts[i].added) {
+          added = splitLines(parts[i].value);
+          i++;
+        }
+      } else {
+        added = lines;
+        i++;
+      }
+      for (const t of removed) rows.push({ kind: "del", hunk, text: t });
+      const addStart = diskLine;
+      for (const t of added) rows.push({ kind: "add", hunk, diskLine: diskLine++, text: t });
+      hunks.push({
+        id: hunk,
+        start: added.length ? addStart : diskLine,
+        end: added.length ? diskLine - 1 : diskLine
+      });
+    }
+    return { file, rows, hunks };
   }
 
   /** Disk-coordinate line ranges that changed, for review markers / lenses. */

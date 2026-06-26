@@ -30,6 +30,27 @@ export interface Deltas {
   ops: DeltaOp[];
 }
 
+/** One rendered row of the custom diff panel. context = unchanged (aligns with
+ *  the editor), del = a baseline line removed (red), add = a disk line added
+ *  (green). del/add rows of the same `hunk` render as one grouped block. */
+export type DiffRow =
+  | { kind: "context"; diskLine: number; text: string }
+  | { kind: "del"; hunk: number; text: string }
+  | { kind: "add"; hunk: number; diskLine: number; text: string };
+
+/** A changed block, with its disk line range for commit/revert-selection. */
+export interface DiffHunk {
+  id: number;
+  start: number;
+  end: number;
+}
+
+export interface FileDiff {
+  file: string;
+  rows: DiffRow[];
+  hunks: DiffHunk[];
+}
+
 /** A file's change summary for the sidebar. */
 export interface ChangedFile {
   file: string;
@@ -69,6 +90,7 @@ export type ToExt =
   | { type: "review"; id: string }
   | { type: "stopReview" }
   | { type: "openFileDiff"; id: string; file: string }
+  | { type: "openDiffPanel"; id: string; file: string }
   | { type: "commit"; id: string }
   | { type: "revert"; id: string }
   | { type: "revertFile"; id: string; file: string }
