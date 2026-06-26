@@ -193,22 +193,6 @@ export class Engine {
     return map;
   }
 
-  /** True if this PR holds a captured baseline for `file` (it's been edited). */
-  hasBaseline(prId: string, file: string): boolean {
-    try {
-      const entry = this.storage.readBaselineIndex(prId).files[file];
-      return !!entry && entry.existed && this.storage.hasBaselineFile(prId, file);
-    } catch {
-      return false;
-    }
-  }
-
-  /** Current on-disk content of a file (or "" if missing) — used so quick-diff
-   *  shows nothing for files that haven't been edited yet. */
-  currentContent(file: string): string {
-    return this.diskExists(file) ? this.readDisk(file) : "";
-  }
-
   /** Baseline ("old") content of a single file for the diff view, served with
    *  the current disk file's line endings so the split diff doesn't flag
    *  EOL-only differences as changes. */

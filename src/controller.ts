@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { Engine } from "./engine/engine";
 import { Errors, OffshootError, type Resolution } from "./engine/errors";
 import { BaselineContentProvider } from "./ui/baselineProvider";
-import { QuickDiff } from "./ui/quickDiff";
 import { DecorationManager } from "./ui/decorations";
 import { resolve as resolveDialog, info, error as showError } from "./ui/dialogs";
 import { IgnoreMatcher } from "./engine/ignore";
@@ -29,6 +28,7 @@ export class Controller {
   private ignore: IgnoreMatcher;
   private statusBar: vscode.StatusBarItem;
   private cleanedWhenEmpty = false;
+  private askedToOpenPr = false;
 
   constructor(readonly workspaceRoot: string, ctx: vscode.ExtensionContext) {
     // Keep PR data OUTSIDE the project, at a deterministic location the
@@ -38,8 +38,6 @@ export class Controller {
     this.engine = new Engine(workspaceRoot, storageDir);
     this.baselineProvider = new BaselineContentProvider(this.engine);
     this.decorations = new DecorationManager(this.engine, workspaceRoot);
-    // Native dirty-diff gutter + inline peek + Revert Change against the baseline.
-    new QuickDiff(this.engine, workspaceRoot, ctx);
     this.ignore = new IgnoreMatcher(workspaceRoot);
 
     // Status-bar item: open-PR count, click to open the Offshoot view.
@@ -224,23 +222,36 @@ export class Controller {
     if (!file) return;
     const key = e.document.uri.toString();
     const prior = this.lastContent.get(key);
-    if (prior !== undefined) {
-      const activePr = this.engine.storage.readActive();
-      const hadBaseline = activePr ? this.engine.hasBaseline(activePr, file) : false;
-      for (const prId of this.openPrIds()) {
+    const prs = this.openPrIds();
+    if (prs.length === 0) {
+      // editing with no PR to capture into — offer to open one (once per session)
+      this.maybeOfferOpenPr();
+    } else if (prior !== undefined) {
+      for (const prId of prs) {
         try {
           this.engine.noteEdit(prId, file, prior);
         } catch {
           /* ignore capture errors */
         }
       }
-      // When a baseline first appears, nudge the quick-diff original so the
-      // gutter decorations show up live (before any save).
-      if (activePr && !hadBaseline && this.engine.hasBaseline(activePr, file)) {
-        this.baselineProvider.refresh(activePr, file);
-      }
     }
     this.lastContent.set(key, e.document.getText());
+  }
+
+  /** Offer to open a PR the first time the user edits without one (this
+   *  workspace session). Clicking the button runs the normal open-PR flow,
+   *  which prompts for a title. */
+  private maybeOfferOpenPr() {
+    if (this.askedToOpenPr) return;
+    this.askedToOpenPr = true;
+    void vscode.window
+      .showInformationMessage(
+        "Offshoot: you're editing without an open PR — open one to track changes?",
+        "Open PR"
+      )
+      .then((pick) => {
+        if (pick === "Open PR") void this.cmdOpenPR("", "");
+      });
   }
 
   private onSave(doc: vscode.TextDocument) {

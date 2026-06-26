@@ -23,12 +23,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Native in-editor diff (experimental).** A QuickDiffProvider shows VS Code's
-  dirty-diff gutter bars against the PR baseline, with the built-in inline change
-  peek (old over new) and a "Revert Change" action — all in one tab, live as you
-  type. Registers a lightweight "Offshoot" entry in the Source Control view.
-  Runs alongside the existing decorations/CodeLens for now; those become
-  redundant once this is confirmed.
+- When you edit a file with no open PR, Offshoot offers (once per workspace
+  session) to open one — a notification with an "Open PR" button that runs the
+  normal title prompt.
 
 ## [0.3.1]
 
