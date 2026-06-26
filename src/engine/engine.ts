@@ -8,6 +8,7 @@ import type {
   DiffHunk,
   DiffRow,
   FileDiff,
+  LogEntry,
   PRMeta,
   PRView
 } from "../shared/protocol";
@@ -342,9 +343,48 @@ export class Engine {
     return collapseRanges([...lines].sort((a, b) => a - b));
   }
 
+  // ---------- history log ----------
+  readLog(): LogEntry[] {
+    return this.storage.readLog();
+  }
+  clearLog(): void {
+    this.storage.writeLog([]);
+  }
+  deleteLogEntry(index: number): void {
+    const log = this.storage.readLog();
+    if (index >= 0 && index < log.length) {
+      log.splice(index, 1);
+      this.storage.writeLog(log);
+    }
+  }
+  /** Append a closed-PR entry. Capture stats BEFORE reverting (which clears the
+   *  diff). Never blocks the close on a log failure. */
+  private logClose(prId: string, action: LogEntry["action"]): void {
+    try {
+      const meta = this.storage.readMeta(prId);
+      const cf = this.prView(prId).changedFiles;
+      const log = this.storage.readLog();
+      log.unshift({
+        id: prId,
+        title: meta.title,
+        notes: meta.notes,
+        created: meta.created,
+        closed: new Date().toISOString(),
+        action,
+        files: cf.length,
+        additions: cf.reduce((s, f) => s + f.added, 0),
+        removals: cf.reduce((s, f) => s + f.removed, 0)
+      });
+      this.storage.writeLog(log);
+    } catch {
+      /* logging is best-effort */
+    }
+  }
+
   // ---------- commit ----------
   commit(prId: string): void {
     if (!this.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    this.logClose(prId, "committed");
     this.storage.deletePR(prId);
   }
 
@@ -387,6 +427,7 @@ export class Engine {
   // ---------- revert ----------
   revert(prId: string): void {
     if (!this.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    this.logClose(prId, "reverted"); // capture stats before restoring clears them
     const idx = this.storage.readBaselineIndex(prId);
     for (const [file, entry] of Object.entries(idx.files)) {
       this.restoreBaseline(prId, file, entry);

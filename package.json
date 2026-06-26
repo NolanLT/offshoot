@@ -132,6 +132,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "diff": "^7.0.0",
+    "highlight.js": "^11.11.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {

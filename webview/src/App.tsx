@@ -38,13 +38,22 @@ export function App() {
 
   return (
     <div className="app">
-      <button
-        className="btn neutral refresh"
-        onClick={() => send({ type: "refresh" })}
-        title="Re-scan .offshoot for PRs and refresh the view"
-      >
-        <span className="ico">⟳</span> Refresh
-      </button>
+      <div className="top-row">
+        <button
+          className="btn neutral"
+          onClick={() => send({ type: "refresh" })}
+          title="Re-scan storage for PRs and refresh the view"
+        >
+          <span className="ico">⟳</span> Refresh
+        </button>
+        <button
+          className="btn neutral"
+          onClick={() => send({ type: "openLog" })}
+          title="Open this workspace's PR history"
+        >
+          History
+        </button>
+      </div>
 
       <hr />
       <NewPR />

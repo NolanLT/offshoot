@@ -5,6 +5,7 @@ import { Engine } from "./engine/engine";
 import { Errors, OffshootError, type Resolution } from "./engine/errors";
 import { BaselineContentProvider } from "./ui/baselineProvider";
 import { DiffPanel } from "./ui/diffPanel";
+import { LogPanel } from "./ui/logPanel";
 import { DecorationManager } from "./ui/decorations";
 import { resolve as resolveDialog, info, error as showError } from "./ui/dialogs";
 import { IgnoreMatcher } from "./engine/ignore";
@@ -22,6 +23,7 @@ export class Controller {
   readonly baselineProvider: BaselineContentProvider;
   readonly decorations: DecorationManager;
   private diffPanel: DiffPanel;
+  private logPanel: LogPanel;
 
   private post: ((state: SidebarState) => void) | null = null;
   private status: SidebarState["status"] = null;
@@ -44,6 +46,17 @@ export class Controller {
       if (kind === "commit") void this.commitRange(prId, file, start, end);
       else void this.revertRange(prId, file, start, end);
     });
+    this.logPanel = new LogPanel(
+      this.engine,
+      () => {
+        this.engine.clearLog();
+        this.logPanel.refresh();
+      },
+      (index) => {
+        this.engine.deleteLogEntry(index);
+        this.logPanel.refresh();
+      }
+    );
     this.ignore = new IgnoreMatcher(workspaceRoot);
 
     // Status-bar item: open-PR count, click to open the Offshoot view.
@@ -452,6 +465,9 @@ export class Controller {
         case "revealFolder":
           await this.revealFolder(msg.id);
           break;
+        case "openLog":
+          this.logPanel.show();
+          break;
       }
     } catch (err) {
       await this.handleError(err);
@@ -500,34 +516,23 @@ export class Controller {
     this.engine.storage.writeActive(id);
     this.decorations.start(id);
 
-    // Open the changed files so the in-editor decorations + diff lenses are
-    // actually visible — otherwise Review looks like it did nothing.
+    // Open the first changed file alongside the custom diff panel; apply the
+    // in-editor decorations to whatever's open.
     const view = this.engine.prView(id);
-    const openable = view.changedFiles.filter((f) => f.kind !== "deleted");
-    for (const f of openable) {
-      const uri = vscode.Uri.joinPath(
-        vscode.Uri.file(this.workspaceRoot),
-        ...f.file.split("/")
-      );
-      try {
-        await vscode.window.showTextDocument(uri, { preview: false });
-      } catch {
-        /* file may be unopenable; skip */
-      }
-    }
-    this.decorations.applyToAll();
-
-    if (openable.length === 0) {
+    const first = view.changedFiles[0];
+    if (first) {
+      await this.openDiffPanel(id, first.file);
       this.setStatus(
         "info",
-        `Review on for PR ${prNum(id)}: no editable changed files yet. Edit and save a file to see changes.`
+        `Reviewing PR ${prNum(id)}: ${view.changedFiles.length} changed file(s). In-editor highlights: green added, blue modified, red removed.`
       );
     } else {
       this.setStatus(
         "info",
-        `Reviewing ${openable.length} file(s): changes are highlighted in the editor (green added, blue modified, red removed) — click the “↔ Offshoot diff” lens or a file in the panel for the split diff.`
+        `Review on for PR ${prNum(id)}: no changes yet. Edit and save a file to see changes.`
       );
     }
+    this.decorations.applyToAll();
     this.refresh();
   }
 
@@ -593,6 +598,7 @@ export class Controller {
         await this.checkUnsaved(files);
         if (!ignoreOverlap) this.checkOverlap(prId, files);
         this.engine.commit(prId);
+        this.logPanel.refresh();
         this.decorations.reviewing && this.decorations.prId === prId && this.decorations.stop();
         this.setStatus("info", `Committed PR ${prNum(prId)}. Changes are now permanent.`);
         this.refresh();
@@ -626,6 +632,7 @@ export class Controller {
         await this.checkUnsaved(files);
         if (!ignoreOverlap) this.checkOverlap(prId, files);
         this.engine.revert(prId);
+        this.logPanel.refresh();
         this.syncLastContent(files);
         this.decorations.reviewing && this.decorations.prId === prId && this.decorations.stop();
         this.setStatus("info", `Reverted PR ${prNum(prId)} to baseline.`);

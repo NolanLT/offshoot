@@ -118,8 +118,12 @@ hr {
   background: color-mix(in srgb, var(--btn) 26%, transparent);
 }
 
-.refresh {
-  width: 100%;
+.top-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.top-row .btn {
   justify-content: center;
 }
 .refresh .ico {

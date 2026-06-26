@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import hljs from "highlight.js";
 import type { Engine } from "../engine/engine";
 
 type HunkAction = (
@@ -9,11 +10,14 @@ type HunkAction = (
   end: number
 ) => void;
 
+const TAB = 4;
+
 /**
  * A custom diff view in a WebviewPanel (opened to the right). Renders the
- * baseline-vs-disk diff as grouped red (removed) / green (added) blocks, styled
- * like the editor, scroll-synced to the file's editor on the left, with a
- * Revert button on each red block and a Commit button on each green block.
+ * baseline-vs-disk diff as grouped red (removed) / green (added) blocks,
+ * syntax-highlighted and styled like the editor (indent guides, line numbers),
+ * scroll-synced to the file's editor on the left, with a Revert button on each
+ * red block and a Commit button on each green block.
  */
 export class DiffPanel {
   private panel?: vscode.WebviewPanel;
@@ -34,7 +38,7 @@ export class DiffPanel {
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "offshoot.diff",
-        `Offshoot Diff`,
+        "Offshoot Diff",
         { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
         { enableScripts: true, retainContextWhenHidden: true }
       );
@@ -50,12 +54,10 @@ export class DiffPanel {
     this.panel.title = `Diff: ${file.split("/").pop()}`;
     this.post();
     this.wireScroll();
-    // sync to the current editor position once
     const ed = this.editorFor(file);
     if (ed) this.syncFromEditor(ed);
   }
 
-  /** Re-send the diff (e.g. after a save changed it) if this file is showing. */
   refresh(prId: string, file: string) {
     if (this.panel && this.prId === prId && this.file === file) this.post();
   }
@@ -64,13 +66,21 @@ export class DiffPanel {
     if (!this.panel || !this.prId || !this.file) return;
     try {
       const diff = this.engine.fileDiff(this.prId, this.file);
-      void this.panel.webview.postMessage({ type: "diff", diff });
+      const lang = langFor(this.file);
+      const rows = diff.rows.map((r) => ({
+        kind: r.kind,
+        line: r.kind === "del" ? null : r.diskLine,
+        hunk: r.kind === "context" ? null : r.hunk,
+        indent: indentLevels(r.text),
+        html: highlight(r.text, lang)
+      }));
+      void this.panel.webview.postMessage({ type: "diff", rows, hunks: diff.hunks });
     } catch {
       /* ignore */
     }
   }
 
-  private onMessage(m: { type: string; start?: number; end?: number; line?: number }) {
+  private onMessage(m: { type: string; start?: number; end?: number }) {
     if (!this.file || !this.prId) return;
     if (m.type === "commitHunk" && m.start != null && m.end != null) {
       this.onHunk("commit", this.prId, this.file, m.start, m.end);
@@ -79,7 +89,6 @@ export class DiffPanel {
     }
   }
 
-  // ---- scroll sync (editor drives the panel) ----
   private wireScroll() {
     this.scrollSub?.dispose();
     this.scrollSub = vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
@@ -114,24 +123,25 @@ export class DiffPanel {
   body {
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--vscode-editor-font-size, 13px);
-    line-height: 1.5;
+    line-height: 1.5; tab-size: ${TAB};
     color: var(--vscode-editor-foreground);
     background: var(--vscode-editor-background);
   }
   #scroll { height: 100vh; overflow: auto; }
-  .line { display: flex; white-space: pre; }
+  .line { display: flex; white-space: pre; position: relative; }
   .ln {
-    flex: 0 0 auto; width: 3.5em; padding: 0 0.8em 0 0;
+    flex: 0 0 auto; width: 3.2em; padding: 0 0.7em 0 0;
     text-align: right; user-select: none;
-    color: var(--vscode-editorLineNumber-foreground);
-    opacity: 0.7;
+    color: var(--vscode-editorLineNumber-foreground); opacity: 0.65;
   }
   .code { flex: 1 1 auto; padding-right: 7em; }
+  .guide {
+    position: absolute; top: 0; bottom: 0; width: 1px;
+    background: var(--vscode-editorIndentGuide-background, rgba(128,128,128,0.25));
+  }
   .block { position: relative; }
-  .block.del { background: color-mix(in srgb, var(--vscode-charts-red, #f14c4c) 16%, transparent); }
-  .block.add { background: color-mix(in srgb, var(--vscode-charts-green, #3fb950) 16%, transparent); }
-  .block.del .code::before { content: "-"; position: absolute; left: 3.5em; opacity: 0.5; }
-  .block.add .code::before { content: "+"; position: absolute; left: 3.5em; opacity: 0.5; }
+  .block.del { background: color-mix(in srgb, var(--vscode-charts-red, #f14c4c) 14%, transparent); }
+  .block.add { background: color-mix(in srgb, var(--vscode-charts-green, #3fb950) 14%, transparent); }
   .hunk-btn {
     position: absolute; top: 2px; right: 6px;
     font-family: var(--vscode-font-family); font-size: 11px;
@@ -142,6 +152,16 @@ export class DiffPanel {
   .revert { --btn: var(--vscode-charts-red, #f14c4c); }
   .commit { --btn: var(--vscode-charts-green, #3fb950); }
   .empty { padding: 14px; opacity: 0.6; }
+  /* syntax colors (Dark+ approximation) */
+  .hljs-keyword,.hljs-built_in,.hljs-literal,.hljs-meta,.hljs-tag,.hljs-name,.hljs-symbol { color: #569cd6; }
+  .hljs-string,.hljs-regexp { color: #ce9178; }
+  .hljs-comment,.hljs-quote { color: #6a9955; font-style: italic; }
+  .hljs-number { color: #b5cea8; }
+  .hljs-title,.hljs-title.function_ { color: #dcdcaa; }
+  .hljs-title.class_,.hljs-type { color: #4ec9b0; }
+  .hljs-attr,.hljs-attribute,.hljs-variable,.hljs-template-variable,.hljs-property { color: #9cdcfe; }
+  .hljs-selector-tag,.hljs-selector-class,.hljs-selector-id { color: #d7ba7d; }
+  .hljs-params { color: var(--vscode-editor-foreground); }
 </style></head>
 <body>
   <div id="scroll"><div id="rows"></div></div>
@@ -151,21 +171,29 @@ export class DiffPanel {
     const rowsEl = document.getElementById("rows");
     let suppress = false;
 
-    function lineEl(kind, lineNo, text) {
+    function lineEl(row) {
       const div = document.createElement("div");
-      div.className = "line " + kind;
-      if (lineNo != null) div.dataset.line = lineNo;
+      div.className = "line " + row.kind;
+      if (row.line != null) div.dataset.line = row.line;
       const ln = document.createElement("span");
-      ln.className = "ln"; ln.textContent = lineNo != null ? lineNo : "";
+      ln.className = "ln"; ln.textContent = row.line != null ? row.line : "";
+      div.appendChild(ln);
+      // indent guides
+      for (let k = 1; k <= row.indent; k++) {
+        const g = document.createElement("div");
+        g.className = "guide";
+        g.style.left = "calc(3.9em + " + (k * ${TAB}) + "ch)";
+        div.appendChild(g);
+      }
       const code = document.createElement("span");
-      code.className = "code"; code.textContent = text.length ? text : " ";
-      div.appendChild(ln); div.appendChild(code);
+      code.className = "code hljs";
+      code.innerHTML = row.html.length ? row.html : " ";
+      div.appendChild(code);
       return div;
     }
 
-    function render(diff) {
+    function render(rows, hunks) {
       rowsEl.innerHTML = "";
-      const rows = diff.rows;
       if (!rows.length) {
         const d = document.createElement("div");
         d.className = "empty"; d.textContent = "No changes in this file.";
@@ -174,19 +202,14 @@ export class DiffPanel {
       let i = 0;
       while (i < rows.length) {
         const r = rows[i];
-        if (r.kind === "context") {
-          rowsEl.appendChild(lineEl("context", r.diskLine, r.text));
-          i++; continue;
-        }
+        if (r.kind === "context") { rowsEl.appendChild(lineEl(r)); i++; continue; }
         const kind = r.kind, hunk = r.hunk;
         const block = document.createElement("div");
         block.className = "block " + kind;
         while (i < rows.length && rows[i].kind === kind && rows[i].hunk === hunk) {
-          const rr = rows[i];
-          block.appendChild(lineEl(kind, rr.kind === "add" ? rr.diskLine : null, rr.text));
-          i++;
+          block.appendChild(lineEl(rows[i])); i++;
         }
-        const h = diff.hunks[hunk];
+        const h = hunks[hunk];
         const btn = document.createElement("button");
         btn.className = "hunk-btn " + (kind === "del" ? "revert" : "commit");
         btn.textContent = kind === "del" ? "↩ Revert" : "✓ Commit";
@@ -200,7 +223,7 @@ export class DiffPanel {
 
     window.addEventListener("message", (ev) => {
       const m = ev.data;
-      if (m.type === "diff") render(m.diff);
+      if (m.type === "diff") render(m.rows, m.hunks);
       else if (m.type === "scrollTo") {
         const el = rowsEl.querySelector('[data-line="' + m.diskLine + '"]');
         if (el) { suppress = true; scroller.scrollTop = el.offsetTop; setTimeout(() => suppress = false, 80); }
@@ -209,6 +232,46 @@ export class DiffPanel {
   </script>
 </body></html>`;
   }
+}
+
+// ---- helpers ----
+const EXT_LANG: Record<string, string> = {
+  ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
+  json: "json", css: "css", scss: "scss", less: "less", html: "xml", xml: "xml",
+  md: "markdown", py: "python", rs: "rust", go: "go", java: "java", c: "c",
+  cpp: "cpp", h: "cpp", cs: "csharp", sh: "bash", yml: "yaml", yaml: "yaml",
+  php: "php", rb: "ruby", sql: "sql", swift: "swift", kt: "kotlin"
+};
+
+function langFor(file: string): string | undefined {
+  const ext = file.slice(file.lastIndexOf(".") + 1).toLowerCase();
+  const lang = EXT_LANG[ext];
+  return lang && hljs.getLanguage(lang) ? lang : undefined;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+}
+
+function highlight(text: string, lang?: string): string {
+  if (!text) return "";
+  if (!lang) return escapeHtml(text);
+  try {
+    return hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+  } catch {
+    return escapeHtml(text);
+  }
+}
+
+/** Number of indent-guide levels for a line, from its leading whitespace. */
+function indentLevels(text: string): number {
+  let width = 0;
+  for (const ch of text) {
+    if (ch === " ") width++;
+    else if (ch === "\t") width += TAB;
+    else break;
+  }
+  return Math.floor(width / TAB);
 }
 
 function nonceStr(): string {

@@ -366,5 +366,33 @@ function read(root: string, rel: string): string {
   eq([d.hunks[0].start, d.hunks[0].end], [2, 3], "hunk covers disk lines 2-3");
 })();
 
+// --- Test 21: commit/revert append to the history log ---
+(function historyLog() {
+  console.log("history log:");
+  const root = tmp();
+  write(root, "a.txt", "x\n");
+  const e = new Engine(root);
+  e.openPR("pr1", "First", "notes");
+  e.noteEdit("pr1", "a.txt", "x\n");
+  write(root, "a.txt", "y\n");
+  e.recordChange("pr1");
+  e.commit("pr1");
+  let log = e.readLog();
+  eq(log.length, 1, "one log entry after commit");
+  eq([log[0].action, log[0].title, log[0].files], ["committed", "First", 1], "entry recorded");
+  // a revert logs too (newest first)
+  e.openPR("pr2", "Second", "");
+  e.noteEdit("pr2", "a.txt", "y\n");
+  write(root, "a.txt", "z\n");
+  e.recordChange("pr2");
+  e.revert("pr2");
+  log = e.readLog();
+  eq([log.length, log[0].action], [2, "reverted"], "revert logged, newest first");
+  e.deleteLogEntry(0);
+  eq(e.readLog().length, 1, "delete removes one entry");
+  e.clearLog();
+  eq(e.readLog().length, 0, "clear empties the log");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

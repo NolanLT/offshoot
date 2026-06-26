@@ -51,6 +51,19 @@ export interface FileDiff {
   hunks: DiffHunk[];
 }
 
+/** A closed-PR entry in the per-workspace history log (no code, just metadata). */
+export interface LogEntry {
+  id: string;
+  title: string;
+  notes: string;
+  created: string;
+  closed: string;
+  action: "committed" | "reverted";
+  files: number;
+  additions: number;
+  removals: number;
+}
+
 /** A file's change summary for the sidebar. */
 export interface ChangedFile {
   file: string;
@@ -99,7 +112,8 @@ export type ToExt =
   | { type: "revertSelection"; id: string }
   | { type: "recapture"; id: string }
   | { type: "discard"; id: string }
-  | { type: "revealFolder"; id: string };
+  | { type: "revealFolder"; id: string }
+  | { type: "openLog" };
 
 // ---- Messages: extension -> webview ----
 export type ToWebview = { type: "state"; state: SidebarState };

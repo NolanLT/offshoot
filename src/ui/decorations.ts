@@ -22,15 +22,15 @@ export class DecorationManager {
     borderColor: new vscode.ThemeColor("editorGutter.addedBackground")
   });
 
-  // Modified lines are shown green (added) too — no blue.
+  // Modified lines: blue, distinct from added (green).
   private readonly modifiedDeco = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
-    backgroundColor: new vscode.ThemeColor("diffEditor.insertedLineBackground"),
-    overviewRulerColor: new vscode.ThemeColor("editorGutter.addedBackground"),
+    backgroundColor: new vscode.ThemeColor("editorGutter.modifiedBackground"),
+    overviewRulerColor: new vscode.ThemeColor("editorGutter.modifiedBackground"),
     overviewRulerLane: vscode.OverviewRulerLane.Left,
     borderWidth: "0 0 0 2px",
     borderStyle: "solid",
-    borderColor: new vscode.ThemeColor("editorGutter.addedBackground")
+    borderColor: new vscode.ThemeColor("editorGutter.modifiedBackground")
   });
 
   // Base type for deletions; per-range render options carry the inline red text.
@@ -123,7 +123,7 @@ export class DecorationManager {
         .join("\n");
       md.appendCodeblock(numbered, languageFor(file));
       const args = encodeURIComponent(JSON.stringify([prId, file]));
-      md.appendMarkdown(`\n[↔ Open split diff](command:offshoot.openDiffForFile?${args})`);
+      md.appendMarkdown(`\n[↔ Open Offshoot diff](command:offshoot.openDiffForFile?${args})`);
 
       return {
         range: lineRange(d.line),

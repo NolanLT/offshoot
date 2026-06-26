@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { Controller } from "./controller";
 import { SidebarProvider } from "./ui/sidebarProvider";
-import { OffshootCodeLensProvider } from "./ui/codelens";
 
 export function activate(ctx: vscode.ExtensionContext) {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -19,22 +18,10 @@ export function activate(ctx: vscode.ExtensionContext) {
   const controller = new Controller(folder.uri.fsPath, ctx);
   const sidebar = new SidebarProvider(ctx.extensionUri, controller);
 
-  const codeLens = new OffshootCodeLensProvider(
-    controller.engine,
-    controller.decorations
-  );
-  // re-render lenses whenever decorations get re-applied
-  const origApply = controller.decorations.applyToAll.bind(controller.decorations);
-  controller.decorations.applyToAll = () => {
-    origApply();
-    codeLens.refresh();
-  };
-
   ctx.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SidebarProvider.viewId, sidebar, {
       webviewOptions: { retainContextWhenHidden: true }
     }),
-    vscode.languages.registerCodeLensProvider({ scheme: "file" }, codeLens),
 
     vscode.commands.registerCommand("offshoot.refresh", () => controller.refresh()),
     vscode.commands.registerCommand("offshoot.openPR", async () => {
@@ -71,7 +58,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       "offshoot.openDiffForFile",
       (prId: string, file: string) =>
-        controller.handleMessage({ type: "openFileDiff", id: prId, file })
+        controller.handleMessage({ type: "openDiffPanel", id: prId, file })
     ),
     vscode.commands.registerCommand("offshoot.nextChange", () =>
       controller.jumpChange(1)

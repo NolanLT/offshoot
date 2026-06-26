@@ -16,18 +16,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Review now opens the custom diff panel; the "↔ Offshoot diff" CodeLens was
+  removed. Modified lines are blue again (distinct from green additions).
 - Editor right-click menu shows "Commit Selection" / "Revert Selection" without
   the "Offshoot:" prefix (kept in the Command Palette via a category).
-- In-editor review decorations no longer use a blue (modified) background —
-  changed lines show green like additions.
 
 ### Added
 
-- **Custom diff panel.** Clicking a changed file opens a WebviewPanel to the
-  right, scroll-synced to the file's editor, styled like the editor. Changed
-  blocks render as grouped red (removed) / green (added) snippets — never
-  alternating — each with its own button: Revert on the red, Commit on the green
-  (per-hunk). Replaces the old split diff for the changed-file click.
+- **Custom diff panel.** Clicking a changed file (or hitting Review) opens a
+  WebviewPanel to the right, scroll-synced to the file's editor and styled like
+  the editor — **syntax highlighting** and **indent guides**. Changed blocks
+  render as grouped red (removed) / green (added) snippets — never alternating —
+  each with its own button: Revert on the red, Commit on the green (per-hunk).
+- **PR history log.** A "History" button opens a webview tab listing this
+  workspace's closed PRs (title, notes, id, opened/closed dates, action,
+  file/line counts) — metadata only, no code. Per-row delete and Clear-all.
 - When you edit a file with no open PR, Offshoot offers (once per workspace
   session) to open one — a notification with an "Open PR" button that runs the
   normal title prompt.

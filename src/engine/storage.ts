@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Deltas, PRMeta } from "../shared/protocol";
+import type { Deltas, LogEntry, PRMeta } from "../shared/protocol";
 
 // Per-file baseline bookkeeping. `existed` = the file was present on disk when
 // it was first touched in this PR (false => it was created during the PR, so
@@ -123,6 +123,24 @@ export class Storage {
   removeBaselineFile(id: string, file: string) {
     const p = this.baselineFilePath(id, file);
     if (fs.existsSync(p)) fs.rmSync(p);
+  }
+
+  // ---- history log (closed PRs) ----
+  private logPath() {
+    return path.join(this.root, "log.json");
+  }
+  readLog(): LogEntry[] {
+    const p = this.logPath();
+    if (!fs.existsSync(p)) return [];
+    try {
+      return JSON.parse(fs.readFileSync(p, "utf8")) as LogEntry[];
+    } catch {
+      return [];
+    }
+  }
+  writeLog(entries: LogEntry[]) {
+    fs.mkdirSync(this.root, { recursive: true });
+    fs.writeFileSync(this.logPath(), JSON.stringify(entries, null, 2));
   }
 
   // ---- active pointer ----
