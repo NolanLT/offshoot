@@ -75,9 +75,10 @@ Buttons that lose data say so and ask to confirm. Use this table to debug:
 | 9  | `deltas.json` unreadable | Re-capture (loses record) · Discard PR · Reveal folder · Cancel |
 | 10 | Unsaved changes in affected files | Save & continue · Discard & continue · Cancel |
 | 11 | File no longer exists | Skip this file · Recreate from baseline · Cancel |
-| 12 | Overlap with other open PR(s) on the same file | one Commit button per overlapping PR · Commit all overlapping · Cancel |
+| 12 | Committing a PR that overlaps other open PR(s) on the same file | Commit this PR only · one Commit button per overlapping PR · Commit all overlapping · Cancel |
 | 13 | No diff in the selected region | Choose another selection · Cancel |
 | 14 | A PR title is required (tried to open a PR with no title) | Type a title in the box → Enter to open · Esc to cancel |
+| 15 | Reverting a PR that overlaps other open PR(s) on the same file | Revert this PR anyway (overwrites to baseline) · Commit an overlapping PR first · Commit all overlapping first · Cancel |
 
 Every error offers at least one real action plus Cancel; choosing a fix re-runs
 the guard before touching disk, so a fix can’t create a new inconsistency.

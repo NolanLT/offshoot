@@ -143,6 +143,8 @@ export const Errors = {
       ]
     ),
 
+  // #12 — committing a PR that overlaps others on a file. Resolve by committing
+  // one side (which removes the conflict).
   overlap: (file: string, prX: string, overlappingIds: string[]) => {
     const buttons: Resolution[] = [
       { id: "commitOverlap", label: `Commit PR ${prNum(prX)} only`, data: prX },
@@ -165,6 +167,39 @@ export const Errors = {
     return new OffshootError(
       12,
       `PR ${prNum(prX)} and ${overlappingIds.length} other open PR(s) modify ${file}. How do you want to proceed?`,
+      buttons
+    );
+  },
+
+  // #15 — reverting a PR that overlaps others on a file. Offer to revert anyway
+  // (overwrite to baseline despite the overlap), or commit one side first.
+  overlapRevert: (file: string, prX: string, overlappingIds: string[]) => {
+    const buttons: Resolution[] = [
+      {
+        id: "forceBaseline",
+        label: `Revert PR ${prNum(prX)} anyway`,
+        destructive: true,
+        data: prX
+      },
+      ...overlappingIds.map(
+        (oid): Resolution => ({
+          id: "commitOverlap",
+          label: `Commit PR ${prNum(oid)} first`,
+          data: oid
+        })
+      )
+    ];
+    if (overlappingIds.length > 0) {
+      buttons.push({
+        id: "commitAllOverlap",
+        label: "Commit all overlapping first",
+        data: [prX, ...overlappingIds]
+      });
+    }
+    buttons.push(CANCEL);
+    return new OffshootError(
+      15,
+      `Reverting PR ${prNum(prX)} would overwrite ${file}, which ${overlappingIds.length} other open PR(s) also modify. How do you want to proceed?`,
       buttons
     );
   },

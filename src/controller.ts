@@ -291,15 +291,31 @@ export class Controller {
       }
       this.maybeOfferOpenPr();
     } else if (prior !== undefined) {
-      for (const prId of prs) {
+      // Capture into the ACTIVE (selected) PR only — not every open PR — so PRs
+      // stay independent. Editing the same file under a different PR later is the
+      // legitimate overlap case, surfaced by the guard (#12) at commit/revert.
+      const target = this.captureTarget(prs);
+      if (target) {
         try {
-          this.engine.noteEdit(prId, file, prior);
+          this.engine.noteEdit(target, file, prior);
         } catch {
           /* ignore capture errors */
         }
       }
     }
     this.lastContent.set(key, e.document.getText());
+  }
+
+  /** Which PR an edit is captured into: the active (selected) one. If the active
+   *  pointer is stale/unset but PRs exist, adopt one so edits land somewhere
+   *  predictable and the sidebar reflects it. */
+  private captureTarget(prs: string[]): string | null {
+    if (prs.length === 0) return null;
+    const active = this.engine.storage.readActive();
+    if (active && prs.includes(active)) return active;
+    const fallback = prs[prs.length - 1];
+    this.engine.storage.writeActive(fallback);
+    return fallback;
   }
 
   /** Offer to open a PR the first time the user edits without one (this
@@ -667,7 +683,7 @@ export class Controller {
     for (;;) {
       try {
         await this.checkUnsaved(files);
-        if (!ignoreOverlap) this.checkOverlap(prId, files);
+        if (!ignoreOverlap) this.checkOverlap(prId, files, "revert");
         this.engine.revert(prId);
         this.logPanel.refresh();
         this.syncLastContent(files);
@@ -699,7 +715,7 @@ export class Controller {
     for (;;) {
       try {
         await this.checkUnsaved([file]);
-        if (!ignoreOverlap) this.checkOverlap(prId, [file]);
+        if (!ignoreOverlap) this.checkOverlap(prId, [file], "revert");
         this.engine.revertFile(prId, file);
         this.syncLastContent([file]);
         if (this.decorations.reviewing && this.decorations.prId === prId) {
@@ -848,11 +864,12 @@ export class Controller {
     );
     if (confirm !== "Revert selection") return;
 
+    let ignoreOverlap = false;
     for (;;) {
       try {
         const ed = this.openEditorFor(file);
         if (ed?.document.isDirty) await ed.document.save();
-        this.checkOverlap(prId, [file]);
+        if (!ignoreOverlap) this.checkOverlap(prId, [file], "revert");
         this.engine.revertSelection(prId, file, start, end);
         this.syncLastContent([file]);
         this.setStatus("info", `Reverted selection in ${file}.`);
@@ -861,7 +878,9 @@ export class Controller {
       } catch (err) {
         const res = await this.resolveOr(err);
         if (!res) return;
-        const done = await this.applyResolution(res, prId, {});
+        const done = await this.applyResolution(res, prId, {
+          setIgnoreOverlap: () => (ignoreOverlap = true)
+        });
         if (done) return;
       }
     }
@@ -877,7 +896,7 @@ export class Controller {
     }
   }
 
-  private checkOverlap(prId: string, files: string[]) {
+  private checkOverlap(prId: string, files: string[], op: "commit" | "revert" = "commit") {
     const overlapping = this.engine.overlappingPRs(prId, files);
     if (overlapping.length) {
       // surface the first shared file in the message
@@ -886,7 +905,10 @@ export class Controller {
           Object.keys(this.engine.storage.readBaselineIndex(oid).files).includes(f)
         )
       );
-      throw Errors.overlap(shared ?? files[0], prId, overlapping);
+      const f = shared ?? files[0];
+      throw op === "revert"
+        ? Errors.overlapRevert(f, prId, overlapping)
+        : Errors.overlap(f, prId, overlapping);
     }
   }
 

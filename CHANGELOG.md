@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-26
+
+### Fixed
+
+- **Multiple open PRs are now actually independent.** Edits were being captured
+  into *every* open PR at once, so switching between PRs showed the same change
+  list and they all "shared" changes. Edits now land only in the active
+  (selected) PR; editing the same file under another PR later is the legitimate
+  overlap case (surfaced by the guard).
+
+### Changed
+
+- **Reverting a PR that overlaps other open PRs now offers real choices.**
+  Previously this hit Error #12 with only *commit* buttons (no way to revert).
+  Overlap is now split into two guards: **#12** (committing an overlapping PR —
+  commit one side) and **#15** (reverting an overlapping PR — *Revert this PR
+  anyway*, which overwrites to baseline, or commit an overlapping PR first). The
+  same options apply to whole-PR, per-file, and selection reverts.
+
 ## [0.4.0] - 2026-06-26
 
 ### Fixed
