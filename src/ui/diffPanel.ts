@@ -169,8 +169,9 @@ export class DiffPanel {
   }
   #scroll { height: 100vh; overflow: auto; }
   .line { display: flex; white-space: pre; position: relative; }
+  /* gutter is ch-based so indent guides line up exactly with the character grid */
   .ln {
-    flex: 0 0 auto; width: 3.2em; padding: 0 0.7em 0 0;
+    flex: 0 0 auto; width: 5ch; padding: 0 1ch 0 0;
     text-align: right; user-select: none;
     color: var(--vscode-editorLineNumber-foreground); opacity: 0.65;
   }
@@ -229,11 +230,12 @@ export class DiffPanel {
       const ln = document.createElement("span");
       ln.className = "ln"; ln.textContent = row.line != null ? row.line : "";
       div.appendChild(ln);
-      // indent guides at each indent level (uses the detected indent unit)
+      // indent guides at each indent level's left edge; gutter is 6ch wide
+      // (5ch number + 1ch pad), so column 0 of the code is at 6ch.
       for (let k = 1; k <= row.indent; k++) {
         const g = document.createElement("div");
         g.className = "guide";
-        g.style.left = "calc(3.9em + " + (k * tab) + "ch)";
+        g.style.left = (6 + (k - 1) * tab) + "ch";
         div.appendChild(g);
       }
       const code = document.createElement("span");

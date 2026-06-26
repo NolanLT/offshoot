@@ -98,9 +98,7 @@ export class LogPanel {
     const vscode = acquireVsCodeApi();
     const body = document.getElementById("body");
     const count = document.getElementById("count");
-    document.getElementById("clear").onclick = () => {
-      if (confirm("Delete the entire PR history for this workspace?")) vscode.postMessage({ type: "clear" });
-    };
+    document.getElementById("clear").onclick = () => vscode.postMessage({ type: "clear" });
     function esc(s){ return (s||"").replace(/[&<>]/g, c => c==="&"?"&amp;":c==="<"?"&lt;":"&gt;"); }
     function fmt(iso){ try { return new Date(iso).toLocaleString(); } catch { return iso; } }
     function render(entries){

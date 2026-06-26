@@ -48,7 +48,13 @@ export class Controller {
     });
     this.logPanel = new LogPanel(
       this.engine,
-      () => {
+      async () => {
+        const ok = await vscode.window.showWarningMessage(
+          "Delete the entire PR history for this workspace?",
+          { modal: true },
+          "Clear history"
+        );
+        if (ok !== "Clear history") return;
         this.engine.clearLog();
         this.logPanel.refresh();
       },
