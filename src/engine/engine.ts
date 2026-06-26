@@ -466,6 +466,25 @@ export class Engine {
     this.recordChange(prId);
   }
 
+  /** Remove residual/orphaned storage: PR dirs without a meta.json, and a stale
+   *  active pointer. Meant to run when no valid PRs remain. Returns true if it
+   *  cleaned anything. */
+  cleanResidualStorage(): boolean {
+    let cleaned = false;
+    for (const id of this.storage.listPrIds()) {
+      if (!this.storage.hasMeta(id)) {
+        this.storage.deletePR(id);
+        cleaned = true;
+      }
+    }
+    const active = this.storage.readActive();
+    if (active && !this.storage.prExists(active)) {
+      this.storage.writeActive(null);
+      cleaned = true;
+    }
+    return cleaned;
+  }
+
   // ---------- listing for sidebar ----------
   listPRs(): PRMeta[] {
     const metas: PRMeta[] = [];

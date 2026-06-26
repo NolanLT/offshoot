@@ -333,5 +333,21 @@ function read(root: string, rel: string): string {
   eq(read(root, "f.txt"), "A\r\nB\r\nC2\r\n", "line1 reverted, CRLF preserved, line3 kept");
 })();
 
+// --- Test 19: cleanResidualStorage removes orphans + stale active ---
+(function residual() {
+  console.log("clean residual storage:");
+  const root = tmp();
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "n");
+  // simulate residue: an orphan PR dir (no meta) and a stale active pointer
+  fs.mkdirSync(path.join(e.storage.prDir("orphan")), { recursive: true });
+  e.storage.writeActive("ghost"); // points to a PR that doesn't exist
+  e.commit("pr1"); // now no valid PRs
+  const cleaned = e.cleanResidualStorage();
+  ok(cleaned, "reported cleaning");
+  ok(!fs.existsSync(e.storage.prDir("orphan")), "orphan dir removed");
+  eq(e.storage.readActive(), null, "stale active cleared");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

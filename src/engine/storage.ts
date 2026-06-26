@@ -70,6 +70,9 @@ export class Storage {
   }
 
   // ---- meta ----
+  hasMeta(id: string): boolean {
+    return fs.existsSync(this.metaPath(id));
+  }
   readMeta(id: string): PRMeta {
     const raw = fs.readFileSync(this.metaPath(id), "utf8");
     return JSON.parse(raw) as PRMeta;

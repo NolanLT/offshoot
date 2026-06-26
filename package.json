@@ -53,31 +53,38 @@
     "commands": [
       {
         "command": "offshoot.openPR",
-        "title": "Offshoot: Open New PR"
+        "title": "Open New PR",
+        "category": "Offshoot"
       },
       {
         "command": "offshoot.refresh",
-        "title": "Offshoot: Refresh PR List"
+        "title": "Refresh PR List",
+        "category": "Offshoot"
       },
       {
         "command": "offshoot.commitSelection",
-        "title": "Offshoot: Commit Selection"
+        "title": "Commit Selection",
+        "category": "Offshoot"
       },
       {
         "command": "offshoot.revertSelection",
-        "title": "Offshoot: Revert Selection"
+        "title": "Revert Selection",
+        "category": "Offshoot"
       },
       {
         "command": "offshoot.toggleReview",
-        "title": "Offshoot: Toggle Review Markers"
+        "title": "Toggle Review Markers",
+        "category": "Offshoot"
       },
       {
         "command": "offshoot.nextChange",
-        "title": "Offshoot: Go to Next Change"
+        "title": "Go to Next Change",
+        "category": "Offshoot"
       },
       {
         "command": "offshoot.prevChange",
-        "title": "Offshoot: Go to Previous Change"
+        "title": "Go to Previous Change",
+        "category": "Offshoot"
       }
     ],
     "keybindings": [

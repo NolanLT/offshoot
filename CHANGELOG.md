@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Reverting a PR no longer leaves a stale in-memory snapshot, which could make a
+  later PR capture a baseline a few lines off (showing e.g. +2/−2 for a one-line
+  edit on a file you'd reverted before).
+- Self-heal: when no valid PRs remain, residual/orphaned storage (a stale active
+  pointer, or PR dirs without a meta.json) is cleared once.
+
+### Changed
+
+- Editor right-click menu shows "Commit Selection" / "Revert Selection" without
+  the "Offshoot:" prefix (kept in the Command Palette via a category).
+- In-editor review decorations no longer use a blue (modified) background —
+  changed lines show green like additions.
+
 ### Added
 
 - **Native in-editor diff (experimental).** A QuickDiffProvider shows VS Code's

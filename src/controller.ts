@@ -28,6 +28,7 @@ export class Controller {
   private lastContent = new Map<string, string>();
   private ignore: IgnoreMatcher;
   private statusBar: vscode.StatusBarItem;
+  private cleanedWhenEmpty = false;
 
   constructor(readonly workspaceRoot: string, ctx: vscode.ExtensionContext) {
     // Keep PR data OUTSIDE the project, at a deterministic location the
@@ -134,6 +135,19 @@ export class Controller {
 
   refresh() {
     const state = this.buildState();
+    // When no valid PRs remain, clear any residual/orphaned storage — once per
+    // empty period — then rebuild if it actually cleaned something.
+    if (state.prs.length === 0) {
+      if (!this.cleanedWhenEmpty) {
+        this.cleanedWhenEmpty = true;
+        if (this.engine.cleanResidualStorage()) {
+          this.refresh();
+          return;
+        }
+      }
+    } else {
+      this.cleanedWhenEmpty = false;
+    }
     if (this.post) this.post(state);
     const additions = state.prs.reduce((s, p) => s + p.additions, 0);
     const removals = state.prs.reduce((s, p) => s + p.removals, 0);
@@ -187,6 +201,22 @@ export class Controller {
 
   private openPrIds(): string[] {
     return this.engine.storage.listPrIds();
+  }
+
+  /** Resync the in-memory pre-edit snapshot to disk for files the engine just
+   *  rewrote (revert). Without this, a later PR captures a stale baseline. */
+  private syncLastContent(files: string[]) {
+    for (const file of files) {
+      const uri = vscode.Uri.joinPath(
+        vscode.Uri.file(this.workspaceRoot),
+        ...file.split("/")
+      );
+      try {
+        this.lastContent.set(uri.toString(), fs.readFileSync(uri.fsPath, "utf8"));
+      } catch {
+        this.lastContent.delete(uri.toString()); // file removed by the revert
+      }
+    }
   }
 
   private onChange(e: vscode.TextDocumentChangeEvent) {
@@ -544,6 +574,7 @@ export class Controller {
         await this.checkUnsaved(files);
         if (!ignoreOverlap) this.checkOverlap(prId, files);
         this.engine.revert(prId);
+        this.syncLastContent(files);
         this.decorations.reviewing && this.decorations.prId === prId && this.decorations.stop();
         this.setStatus("info", `Reverted PR ${prNum(prId)} to baseline.`);
         this.refresh();
@@ -574,6 +605,7 @@ export class Controller {
         await this.checkUnsaved([file]);
         if (!ignoreOverlap) this.checkOverlap(prId, [file]);
         this.engine.revertFile(prId, file);
+        this.syncLastContent([file]);
         if (this.decorations.reviewing && this.decorations.prId === prId) {
           this.baselineProvider.refresh(prId, file);
           this.decorations.applyToAll();
@@ -729,6 +761,7 @@ export class Controller {
         if (editor.document.isDirty) await editor.document.save();
         this.checkOverlap(prId, [file]);
         this.engine.revertSelection(prId, file, start, end);
+        this.syncLastContent([file]);
         this.setStatus("info", `Reverted selection in ${file}.`);
         if (this.decorations.reviewing) {
           this.baselineProvider.refresh(prId, file);
