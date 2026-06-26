@@ -231,11 +231,12 @@ export class DiffPanel {
       ln.className = "ln"; ln.textContent = row.line != null ? row.line : "";
       div.appendChild(ln);
       // indent guides at each indent level's left edge; gutter is 6ch wide
-      // (5ch number + 1ch pad), so column 0 of the code is at 6ch.
+      // (5ch number + 1ch pad), so column 0 of the code is at 6ch — guides sit at
+      // the start of each indent level (one ch left so the rule hugs the column).
       for (let k = 1; k <= row.indent; k++) {
         const g = document.createElement("div");
         g.className = "guide";
-        g.style.left = (6 + (k - 1) * tab) + "ch";
+        g.style.left = (5 + (k - 1) * tab) + "ch";
         div.appendChild(g);
       }
       const code = document.createElement("span");

@@ -33,6 +33,10 @@ export class Controller {
   private statusBar: vscode.StatusBarItem;
   private cleanedWhenEmpty = false;
   private askedToOpenPr = false;
+  /** Original pre-edit content of files touched while NO PR was open, so the
+   *  edit that prompted "open a PR?" isn't lost — the next PR opened absorbs
+   *  these as its baselines. Keyed by rel path; first (earliest) value wins. */
+  private orphanBaselines = new Map<string, string>();
 
   constructor(readonly workspaceRoot: string, ctx: vscode.ExtensionContext) {
     // Keep PR data OUTSIDE the project, at a deterministic location the
@@ -279,7 +283,12 @@ export class Controller {
     const prior = this.lastContent.get(key);
     const prs = this.openPrIds();
     if (prs.length === 0) {
-      // editing with no PR to capture into — offer to open one (once per session)
+      // editing with no PR to capture into — remember the original content so the
+      // edit isn't lost, then offer to open a PR (once per session). The next PR
+      // opened replays these as baselines.
+      if (prior !== undefined && !this.orphanBaselines.has(file)) {
+        this.orphanBaselines.set(file, prior);
+      }
       this.maybeOfferOpenPr();
     } else if (prior !== undefined) {
       for (const prId of prs) {
@@ -499,11 +508,33 @@ export class Controller {
     const prId = id?.trim() || this.nextId();
     try {
       this.engine.openPR(prId, finalTitle, notes);
+      this.absorbOrphanBaselines(prId);
       this.decorations.stop();
       this.setStatus("info", `Opened PR ${prNum(prId)}.`);
       this.refresh();
     } catch (err) {
       await this.handleError(err);
+    }
+  }
+
+  /** Seed a freshly opened PR with baselines for files the user edited before
+   *  any PR existed, so those changes are captured (and revertable) rather than
+   *  silently adopted as the new baseline. Mirrors the MCP "track ahead of edit"
+   *  flow: recordChange keeps a baseline even if it currently matches disk. */
+  private absorbOrphanBaselines(prId: string) {
+    if (this.orphanBaselines.size === 0) return;
+    for (const [file, original] of this.orphanBaselines) {
+      try {
+        this.engine.noteEdit(prId, file, original);
+      } catch {
+        /* ignore capture errors */
+      }
+    }
+    this.orphanBaselines.clear();
+    try {
+      this.engine.recordChange(prId);
+    } catch {
+      /* ignore */
     }
   }
 

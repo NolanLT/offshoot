@@ -24,9 +24,13 @@ Revert a PR and disk is restored to the baseline.
 1. Click the Offshoot icon in the Activity Bar.
 2. **Open PR** with a title (and optional notes / custom id).
 3. Edit and save files — changes are captured automatically against the baseline.
-4. **Review** to paint changes directly in the editor — green for added, blue
-   for modified, and removed lines shown inline in red (hover for the full text).
-   Click a file (or the "↔ Offshoot diff" lens) to open the native split diff.
+   If you start editing with no PR open, Offshoot offers to open one and remembers
+   the original content, so the change that prompted the offer is captured by the
+   PR you open (not lost).
+4. **Review** to paint changes directly in the editor — green for added and blue
+   for modified lines. Removed lines aren't painted in the editor (the text is
+   gone from disk); clicking a changed file opens the custom diff panel to the
+   right, with grouped red/green hunks and per-hunk Commit/Revert actions.
 5. **Commit** to make it permanent, **Revert** to roll back, or **Commit
    selected** to finalize just the lines you've selected. You can also revert a
    single file from the changes list, and edit a PR's title/notes (✎).
@@ -38,9 +42,12 @@ Offshoot never tracks `.offshoot/`, `.git/`, or `node_modules/`. Add a
 
 ## Storage
 
-Everything lives under `.offshoot/` at the workspace root. Each open PR is a
-self-contained folder (`meta.json`, `deltas.json`, cached baseline of touched
-files). Committing a PR deletes its folder; nothing else persists.
+Offshoot stores PR data outside the project, under `~/.offshoot/<workspace-hash>`.
+This deterministic location is computed from your workspace path, so the
+extension and the standalone MCP server both operate on the same PR data.
+Each open PR is still a self-contained folder (`meta.json`, `deltas.json`, cached
+baseline of touched files); committing a PR deletes its folder and leaves no
+extra state behind.
 
 ## Guards
 
@@ -91,7 +98,8 @@ follows whatever project the session is in):
 claude mcp add offshoot --scope user -- npx -y github:NolanLT/offshoot
 # pin a release:        npx -y github:NolanLT/offshoot#v0.1.1
 # or run a local build: node "<path-to-offshoot>/dist/mcp/server.cjs"
-# pin a workspace:      … --workspace "C:/path/to/project"
+# pin a workspace:      node "<path-to-offshoot>/dist/mcp/server.cjs" --workspace "C:/path/to/project"
+# or set the workspace via env: OFFSHOOT_WORKSPACE="C:/path/to/project"
 ```
 
 Tools: `offshoot_list_prs`, `offshoot_open_pr`, `offshoot_track_files`,

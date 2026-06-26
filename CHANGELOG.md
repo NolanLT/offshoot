@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-26
+
 ### Fixed
 
 - Reverting a PR no longer leaves a stale in-memory snapshot, which could make a
@@ -13,6 +15,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   edit on a file you'd reverted before).
 - Self-heal: when no valid PRs remain, residual/orphaned storage (a stale active
   pointer, or PR dirs without a meta.json) is cleared once.
+- Diff panel indent guides now align to the character grid (no longer drawn a
+  full character to the right of the column).
+- PR History "Clear all" works (webviews don't support `window.confirm`; the
+  confirmation is now a native modal).
+- The edit that triggers the "open a PR?" offer is no longer lost: Offshoot
+  remembers the original content of files edited while no PR is open, and the
+  next PR opened absorbs them as baselines — so that first change is captured and
+  revertable instead of being silently adopted as the new baseline.
 
 ### Changed
 
@@ -20,6 +30,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   removed. Modified lines are blue again (distinct from green additions).
 - Editor right-click menu shows "Commit Selection" / "Revert Selection" without
   the "Offshoot:" prefix (kept in the Command Palette via a category).
+- **Deletions are no longer painted in the working editor.** The inline red
+  "removed: …" ghost text, its hover, and the red gutter marker were dropped —
+  removed lines are surfaced in the custom diff panel instead, keeping the editor
+  uncluttered. Added (green) and modified (blue) decorations are unchanged.
+- Diff panel syntax highlighting is theme-aware (Dark+ on dark themes, Light+ on
+  light) and indent guides detect the file's indent unit (2 / 4 / auto). The
+  bundled highlight.js was trimmed to the core + the languages actually used.
+- Sidebar: a divider now separates the selected PR's changes list from its action
+  buttons; the divider between the open-PR list and the selected PR was removed.
 
 ### Added
 

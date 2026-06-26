@@ -61,12 +61,7 @@ export function App() {
       <hr />
       <OpenPRs state={state} />
 
-      {state.selected && (
-        <>
-          <hr />
-          <SelectedPanel state={state} />
-        </>
-      )}
+      {state.selected && <SelectedPanel state={state} />}
     </div>
   );
 }
@@ -228,6 +223,8 @@ function SelectedPanel({ state }: { state: SidebarState }) {
           )}
         </>
       )}
+
+      <hr />
 
       <div className="actions">
         <button
