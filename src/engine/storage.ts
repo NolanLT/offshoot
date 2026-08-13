@@ -1,6 +1,25 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Deltas, LogEntry, PRMeta } from "../shared/protocol";
+import { Errors } from "./errors";
+
+/** Write via a temp file + rename so a crash mid-write can never leave a
+ *  half-written meta.json / baseline.json behind (rename is atomic on both
+ *  NTFS and POSIX). Falls back to a direct write if rename isn't possible. */
+function writeAtomic(p: string, data: string | Buffer): void {
+  const tmp = `${p}.tmp`;
+  try {
+    fs.writeFileSync(tmp, data);
+    fs.renameSync(tmp, p);
+  } catch {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      /* nothing more to do */
+    }
+    fs.writeFileSync(p, data);
+  }
+}
 
 // Per-file baseline bookkeeping. `existed` = the file was present on disk when
 // it was first touched in this PR (false => it was created during the PR, so
@@ -48,8 +67,16 @@ export class Storage {
   private baselineIndexPath(id: string) {
     return path.join(this.prDir(id), "baseline.json");
   }
+  /** Baseline cache path for `file`. Defense in depth: even though callers
+   *  normalize, a `..` segment here would write outside the storage dir. */
   private baselineFilePath(id: string, file: string) {
-    return path.join(this.baselineDir(id), file);
+    const dir = this.baselineDir(id);
+    const p = path.resolve(dir, file);
+    const root = path.resolve(dir);
+    if (p !== root && !p.startsWith(root + path.sep)) {
+      throw Errors.pathOutsideWorkspace(file);
+    }
+    return p;
   }
   private activePath() {
     return path.join(this.root, "active.json");
@@ -73,35 +100,57 @@ export class Storage {
   hasMeta(id: string): boolean {
     return fs.existsSync(this.metaPath(id));
   }
+  /** @throws Error #8 if meta.json is missing or not parseable — the dialog
+   *  offers Reveal folder / Discard, which is the only way out of a corrupt PR. */
   readMeta(id: string): PRMeta {
-    const raw = fs.readFileSync(this.metaPath(id), "utf8");
-    return JSON.parse(raw) as PRMeta;
+    try {
+      return JSON.parse(fs.readFileSync(this.metaPath(id), "utf8")) as PRMeta;
+    } catch {
+      throw Errors.metaUnreadable(id);
+    }
   }
   writeMeta(meta: PRMeta) {
     fs.mkdirSync(this.prDir(meta.id), { recursive: true });
-    fs.writeFileSync(this.metaPath(meta.id), JSON.stringify(meta, null, 2));
+    writeAtomic(this.metaPath(meta.id), JSON.stringify(meta, null, 2));
   }
 
   // ---- deltas ----
+  /** @throws Error #9 if deltas.json exists but is corrupt. A missing file is
+   *  normal (no changes recorded yet) and returns empty. */
   readDeltas(id: string): Deltas {
     const p = this.deltasPath(id);
     if (!fs.existsSync(p)) return { ops: [] };
-    return JSON.parse(fs.readFileSync(p, "utf8")) as Deltas;
+    try {
+      return JSON.parse(fs.readFileSync(p, "utf8")) as Deltas;
+    } catch {
+      throw Errors.deltasUnreadable(id);
+    }
   }
   writeDeltas(id: string, deltas: Deltas) {
     fs.mkdirSync(this.prDir(id), { recursive: true });
-    fs.writeFileSync(this.deltasPath(id), JSON.stringify(deltas, null, 2));
+    writeAtomic(this.deltasPath(id), JSON.stringify(deltas, null, 2));
   }
 
   // ---- baseline index ----
+  /** @throws Error #9 if baseline.json is corrupt. This one matters most: it is
+   *  the record of what the PR touched, so failing loudly beats silently
+   *  reporting "no changes" for a PR that has them. */
   readBaselineIndex(id: string): BaselineIndex {
     const p = this.baselineIndexPath(id);
     if (!fs.existsSync(p)) return { files: {} };
-    return JSON.parse(fs.readFileSync(p, "utf8")) as BaselineIndex;
+    try {
+      const idx = JSON.parse(fs.readFileSync(p, "utf8")) as BaselineIndex;
+      if (!idx || typeof idx !== "object" || typeof idx.files !== "object") {
+        throw new Error("shape");
+      }
+      return idx;
+    } catch {
+      throw Errors.deltasUnreadable(id, "baseline.json");
+    }
   }
   writeBaselineIndex(id: string, idx: BaselineIndex) {
     fs.mkdirSync(this.prDir(id), { recursive: true });
-    fs.writeFileSync(this.baselineIndexPath(id), JSON.stringify(idx, null, 2));
+    writeAtomic(this.baselineIndexPath(id), JSON.stringify(idx, null, 2));
   }
 
   // ---- baseline content ----
@@ -118,7 +167,7 @@ export class Storage {
   writeBaselineFile(id: string, file: string, content: string | Buffer) {
     const p = this.baselineFilePath(id, file);
     fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, content);
+    writeAtomic(p, content);
   }
   removeBaselineFile(id: string, file: string) {
     const p = this.baselineFilePath(id, file);
@@ -140,7 +189,7 @@ export class Storage {
   }
   writeLog(entries: LogEntry[]) {
     fs.mkdirSync(this.root, { recursive: true });
-    fs.writeFileSync(this.logPath(), JSON.stringify(entries, null, 2));
+    writeAtomic(this.logPath(), JSON.stringify(entries, null, 2));
   }
 
   // ---- active pointer ----
@@ -155,7 +204,7 @@ export class Storage {
   }
   writeActive(id: string | null) {
     fs.mkdirSync(this.root, { recursive: true });
-    fs.writeFileSync(this.activePath(), JSON.stringify({ id }, null, 2));
+    writeAtomic(this.activePath(), JSON.stringify({ id }, null, 2));
   }
 
   // ---- destroy a PR ----

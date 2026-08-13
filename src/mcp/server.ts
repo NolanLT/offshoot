@@ -11,7 +11,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { Engine } from "../engine/engine";
+import { OffshootError } from "../engine/errors";
 import { resolveStorageDir } from "../engine/storagePath";
+
+/** Injected by esbuild from package.json — keeps the version the server reports
+ *  from drifting away from the one that shipped. */
+declare const __OFFSHOOT_VERSION__: string;
 
 function resolveWorkspace(): string {
   const argIdx = process.argv.indexOf("--workspace");
@@ -30,6 +35,12 @@ const fail = (msg: string) => ({
   content: [{ type: "text" as const, text: `Error: ${msg}` }],
   isError: true
 });
+/** Report Offshoot's own errors with their catalogue number, so the agent (and
+ *  the user reading the transcript) sees the same code the sidebar shows. */
+const failErr = (e: unknown) =>
+  e instanceof OffshootError
+    ? fail(`(Offshoot Error #${e.code}) ${e.message}`)
+    : fail((e as Error).message);
 
 function nextId(): string {
   const ids = engine.storage.listPrIds();
@@ -37,11 +48,32 @@ function nextId(): string {
   while (ids.includes(`pr${n}`)) n++;
   return `pr${n}`;
 }
+/** Resolve a caller-supplied path through the engine's guard (Error #16), so a
+ *  `..` segment can never reach the filesystem. */
 function abs(file: string) {
-  return path.join(workspaceRoot, ...file.split("/"));
+  return path.join(workspaceRoot, ...engine.normRel(file).split("/"));
 }
 
-const server = new McpServer({ name: "offshoot", version: "0.1.0" });
+/**
+ * The overlap guard the sidebar enforces (#12/#15), which the MCP tools used to
+ * skip entirely: committing PR A while PR B holds a baseline for the same file
+ * leaves B's baseline describing content that no longer exists.
+ */
+function overlapCheck(id: string, force: boolean, op: "commit" | "revert") {
+  if (force) return null;
+  const overlapping = engine.overlappingPRs(id, engine.touchedFiles(id));
+  if (!overlapping.length) return null;
+  return fail(
+    `(Offshoot Error #${op === "commit" ? 12 : 15}) PR ${id} shares files with ` +
+      `other open PR(s): ${overlapping.join(", ")}. ${op === "commit" ? "Committing" : "Reverting"} ` +
+      `it will invalidate their baselines. Resolve those PRs first, or call again with force=true.`
+  );
+}
+
+const server = new McpServer({
+  name: "offshoot",
+  version: typeof __OFFSHOOT_VERSION__ === "string" ? __OFFSHOOT_VERSION__ : "0.0.0"
+});
 
 server.tool(
   "offshoot_list_prs",
@@ -77,7 +109,7 @@ server.tool(
       const meta = engine.openPR(prId, t, notes ?? "");
       return ok({ opened: meta });
     } catch (e) {
-      return fail((e as Error).message);
+      return failErr(e);
     }
   }
 );
@@ -117,7 +149,7 @@ server.tool(
       engine.recordChange(id);
       return ok(engine.prView(id));
     } catch (e) {
-      return fail((e as Error).message);
+      return failErr(e);
     }
   }
 );
@@ -128,36 +160,90 @@ server.tool(
   { id: z.string(), file: z.string() },
   async ({ id, file }) => {
     if (!engine.storage.prExists(id)) return fail(`PR ${id} not found.`);
-    const baseline = engine.baselineContent(id, file);
-    const current = fs.existsSync(abs(file)) ? fs.readFileSync(abs(file), "utf8") : null;
-    return ok({ file, baseline, current });
+    try {
+      const baseline = engine.baselineContent(id, file);
+      const current = fs.existsSync(abs(file)) ? fs.readFileSync(abs(file), "utf8") : null;
+      return ok({ file, baseline, current });
+    } catch (e) {
+      return failErr(e);
+    }
   }
 );
 
 server.tool(
   "offshoot_commit",
-  "Commit a PR: make its changes permanent and delete its baseline (irreversible).",
-  { id: z.string() },
-  async ({ id }) => {
+  "Commit a PR: make its changes permanent and delete its baseline (irreversible). " +
+    "Refuses if another open PR touches the same files unless force=true.",
+  { id: z.string(), force: z.boolean().optional() },
+  async ({ id, force }) => {
+    if (!engine.storage.prExists(id)) return fail(`PR ${id} not found.`);
+    const blocked = overlapCheck(id, force ?? false, "commit");
+    if (blocked) return blocked;
     try {
       engine.commit(id);
       return ok({ committed: id });
     } catch (e) {
-      return fail((e as Error).message);
+      return failErr(e);
     }
   }
 );
 
 server.tool(
   "offshoot_revert",
-  "Revert a PR: overwrite the workspace files back to the PR baseline, then close it.",
-  { id: z.string() },
-  async ({ id }) => {
+  "Revert a PR: overwrite the workspace files back to the PR baseline, then close it. " +
+    "Refuses if another open PR touches the same files unless force=true.",
+  { id: z.string(), force: z.boolean().optional() },
+  async ({ id, force }) => {
+    if (!engine.storage.prExists(id)) return fail(`PR ${id} not found.`);
+    const blocked = overlapCheck(id, force ?? false, "revert");
+    if (blocked) return blocked;
     try {
       engine.revert(id);
       return ok({ reverted: id });
     } catch (e) {
-      return fail((e as Error).message);
+      return failErr(e);
+    }
+  }
+);
+
+server.tool(
+  "offshoot_commit_selection",
+  "Commit only the changed lines of one file within a disk line range (1-based, " +
+    "inclusive). Those lines become permanent; the rest of the PR stays open.",
+  {
+    id: z.string(),
+    file: z.string(),
+    startLine: z.number().int().min(1),
+    endLine: z.number().int().min(1)
+  },
+  async ({ id, file, startLine, endLine }) => {
+    if (!engine.storage.prExists(id)) return fail(`PR ${id} not found.`);
+    try {
+      engine.commitSelection(id, file, startLine, endLine);
+      return ok({ committedSelection: { file, startLine, endLine } });
+    } catch (e) {
+      return failErr(e);
+    }
+  }
+);
+
+server.tool(
+  "offshoot_revert_selection",
+  "Revert only the changed lines of one file within a disk line range (1-based, " +
+    "inclusive) back to baseline, leaving the PR's other changes intact.",
+  {
+    id: z.string(),
+    file: z.string(),
+    startLine: z.number().int().min(1),
+    endLine: z.number().int().min(1)
+  },
+  async ({ id, file, startLine, endLine }) => {
+    if (!engine.storage.prExists(id)) return fail(`PR ${id} not found.`);
+    try {
+      engine.revertSelection(id, file, startLine, endLine);
+      return ok({ revertedSelection: { file, startLine, endLine } });
+    } catch (e) {
+      return failErr(e);
     }
   }
 );
@@ -173,7 +259,7 @@ server.tool(
       if (engine.touchedFiles(id).length === 0) engine.storage.deletePR(id);
       return ok({ revertedFile: file, prClosed: !engine.storage.prExists(id) });
     } catch (e) {
-      return fail((e as Error).message);
+      return failErr(e);
     }
   }
 );
@@ -189,7 +275,7 @@ server.tool(
       engine.recapture(id, file);
       return ok({ recaptured: id, file: file ?? "(all)" });
     } catch (e) {
-      return fail((e as Error).message);
+      return failErr(e);
     }
   }
 );

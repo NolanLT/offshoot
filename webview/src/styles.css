@@ -126,10 +126,6 @@ hr {
 .top-row .btn {
   justify-content: center;
 }
-.refresh .ico {
-  font-size: 14px;
-  line-height: 1;
-}
 
 /* ---- collapsible header ---- */
 .collapse-head {
@@ -261,7 +257,8 @@ hr {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 4px;
+  /* no left padding: depth-0 rows sit flush with the rest of the sidebar */
+  padding: 3px 4px 3px 0;
   border-radius: 4px;
   cursor: pointer;
 }
@@ -298,7 +295,7 @@ hr {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 1px 4px;
+  padding: 1px 4px 1px 0;
   border-radius: 4px;
 }
 .file-row:hover .revert-file {

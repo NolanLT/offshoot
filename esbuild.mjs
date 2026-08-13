@@ -1,6 +1,8 @@
 import esbuild from "esbuild";
+import { readFileSync } from "node:fs";
 
 const watch = process.argv.includes("--watch");
+const { version } = JSON.parse(readFileSync("package.json", "utf8"));
 
 /** @type {import('esbuild').BuildOptions} */
 const extOpts = {
@@ -26,6 +28,8 @@ const mcpOpts = {
   target: "node18",
   outfile: "dist/mcp/server.cjs",
   banner: { js: "#!/usr/bin/env node" },
+  // report the real package version over MCP instead of a hardcoded literal
+  define: { __OFFSHOOT_VERSION__: JSON.stringify(version) },
   sourcemap: true,
   minify: !watch,
   logLevel: "info"

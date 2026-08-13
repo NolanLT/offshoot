@@ -41,8 +41,35 @@ export class Engine {
   }
 
   // ---------- helpers ----------
+  /**
+   * Canonical storage key for a caller-supplied path, and the single place that
+   * decides whether a path is allowed at all. The VS Code layer only ever passes
+   * paths derived from `rel()`, but the MCP layer takes them from an AI, so an
+   * absolute path or a `..` segment has to be refused here — otherwise it would
+   * reach fs.writeFileSync in restoreBaseline, outside the workspace entirely.
+   * @throws Error #16 for anything that escapes the workspace.
+   */
+  normRel(file: string): string {
+    const raw = String(file ?? "").split("\\").join("/");
+    if (!raw || path.posix.isAbsolute(raw) || path.win32.isAbsolute(raw)) {
+      throw Errors.pathOutsideWorkspace(file);
+    }
+    const norm = path.posix.normalize(raw).replace(/^\.\//, "").replace(/\/+$/, "");
+    if (!norm || norm === "." || norm === ".." || norm.startsWith("../")) {
+      throw Errors.pathOutsideWorkspace(file);
+    }
+    // Final check against the real root, so symlink-free traversal can't slip
+    // past the string rules above.
+    const root = path.resolve(this.workspaceRoot);
+    const abs = path.resolve(root, norm);
+    if (abs !== root && !abs.startsWith(root + path.sep)) {
+      throw Errors.pathOutsideWorkspace(file);
+    }
+    return norm;
+  }
+
   private abs(file: string): string {
-    return path.join(this.workspaceRoot, file);
+    return path.join(this.workspaceRoot, ...this.normRel(file).split("/"));
   }
   private diskExists(file: string): boolean {
     return fs.existsSync(this.abs(file));
@@ -78,6 +105,7 @@ export class Engine {
    *  Accepts bytes so binaries (images) tracked ahead of a delete keep exact
    *  content; binary files are never line-diffed (we don't track pixel changes). */
   noteEdit(prId: string, file: string, priorContent: string | Buffer) {
+    file = this.normRel(file);
     const idx = this.storage.readBaselineIndex(prId);
     if (idx.files[file]) return; // already captured
     const buf = Buffer.isBuffer(priorContent)
@@ -90,6 +118,7 @@ export class Engine {
 
   /** A file created after openPR: baseline is "did not exist". */
   noteCreate(prId: string, file: string) {
+    file = this.normRel(file);
     const idx = this.storage.readBaselineIndex(prId);
     if (idx.files[file]) return;
     idx.files[file] = { existed: false, deleted: false };
@@ -99,6 +128,7 @@ export class Engine {
   /** A file deleted from disk: keep its full old content (bytes, so images work)
    *  for recreation on revert. Pass the file's content captured BEFORE deletion. */
   noteDelete(prId: string, file: string, priorContent: string | Buffer) {
+    file = this.normRel(file);
     const buf = Buffer.isBuffer(priorContent)
       ? priorContent
       : Buffer.from(priorContent, "utf8");
@@ -138,12 +168,19 @@ export class Engine {
         continue;
       }
 
-      if (entry.existed && entry.deleted && !exists) {
-        // binary deleted files keep their bytes in the baseline, not deltas
+      // Gone from disk. `deleted` is set when VS Code reports the delete, but a
+      // file removed by a script (or an agent) never fires that event — treat
+      // "expected on disk, isn't there" as a deletion either way, or it would
+      // render as a "modified" file with every line removed.
+      if (entry.existed && !exists) {
         ops.push({
           type: "delFile",
           file,
-          old: entry.binary ? "<binary>" : this.storage.readBaselineFile(prId, file)
+          // binary deleted files keep their bytes in the baseline, not deltas
+          old:
+            entry.binary || !this.storage.hasBaselineFile(prId, file)
+              ? "<binary>"
+              : this.storage.readBaselineFile(prId, file)
         });
         continue;
       }
@@ -201,6 +238,7 @@ export class Engine {
    *  the current disk file's line endings so the split diff doesn't flag
    *  EOL-only differences as changes. */
   baselineContent(prId: string, file: string): string {
+    file = this.normRel(file);
     const idx = this.storage.readBaselineIndex(prId);
     const entry = idx.files[file];
     if (!entry || !entry.existed) return "";
@@ -221,7 +259,8 @@ export class Engine {
       const exists = this.diskExists(file);
       if (!entry.existed && (entry.deleted || !exists)) continue;
 
-      if (entry.existed && entry.deleted && !exists) {
+      // see recordChange: absent from disk == deleted, event or no event
+      if (entry.existed && !exists) {
         if (entry.binary) {
           changedFiles.push({ file, added: 0, removed: 0, kind: "deleted" });
         } else {
@@ -264,6 +303,7 @@ export class Engine {
     modified: number[];
     deleted: Array<{ line: number; texts: string[] }>;
   } {
+    file = this.normRel(file);
     const deltas = this.storage.readDeltas(prId);
     const added: number[] = [];
     const modified: number[] = [];
@@ -289,6 +329,7 @@ export class Engine {
    *  group of removed (red) rows followed by added (green) rows — never
    *  alternating line-by-line. Each block carries its disk line range. */
   fileDiff(prId: string, file: string): FileDiff {
+    file = this.normRel(file);
     const baseline = this.baselineContent(prId, file);
     const disk = this.diskExists(file) ? this.readDisk(file) : "";
     const parts = diffLines(normEol(baseline), normEol(disk));
@@ -332,6 +373,7 @@ export class Engine {
 
   /** Disk-coordinate line ranges that changed, for review markers / lenses. */
   changedLineRanges(prId: string, file: string): Array<[number, number]> {
+    file = this.normRel(file);
     const deltas = this.storage.readDeltas(prId);
     const lines = new Set<number>();
     for (const op of deltas.ops) {
@@ -357,25 +399,36 @@ export class Engine {
       this.storage.writeLog(log);
     }
   }
-  /** Append a closed-PR entry. Capture stats BEFORE reverting (which clears the
-   *  diff). Never blocks the close on a log failure. */
-  private logClose(prId: string, action: LogEntry["action"]): void {
+  /** Snapshot the stats a log entry needs. MUST run before a revert, which
+   *  restores the files and so erases the diff being described. */
+  private closeStats(prId: string): Omit<LogEntry, "action" | "closed"> | null {
     try {
       const meta = this.storage.readMeta(prId);
       const cf = this.prView(prId).changedFiles;
-      const log = this.storage.readLog();
-      log.unshift({
+      return {
         id: prId,
         title: meta.title,
         notes: meta.notes,
         created: meta.created,
-        closed: new Date().toISOString(),
-        action,
         files: cf.length,
         additions: cf.reduce((s, f) => s + f.added, 0),
         removals: cf.reduce((s, f) => s + f.removed, 0),
         changedFiles: cf.map((f) => f.file)
-      });
+      };
+    } catch {
+      return null; // logging is best-effort; never block a close on it
+    }
+  }
+
+  /** Append a closed-PR entry from a snapshot taken before the close. */
+  private appendClose(
+    stats: Omit<LogEntry, "action" | "closed"> | null,
+    action: LogEntry["action"]
+  ): void {
+    if (!stats) return;
+    try {
+      const log = this.storage.readLog();
+      log.unshift({ ...stats, action, closed: new Date().toISOString() });
       this.storage.writeLog(log);
     } catch {
       /* logging is best-effort */
@@ -385,7 +438,7 @@ export class Engine {
   // ---------- commit ----------
   commit(prId: string): void {
     if (!this.storage.prExists(prId)) throw Errors.prNotFound(prId);
-    this.logClose(prId, "committed");
+    this.appendClose(this.closeStats(prId), "committed");
     this.storage.deletePR(prId);
   }
 
@@ -414,7 +467,9 @@ export class Engine {
   private pruneEmptyDirs(absFile: string): void {
     const root = path.resolve(this.workspaceRoot);
     let dir = path.dirname(path.resolve(absFile));
-    while (dir.length > root.length && dir.startsWith(root)) {
+    // startsWith(root) alone would also match a sibling like C:\project2 when
+    // the root is C:\project — require the separator.
+    while (dir.startsWith(root + path.sep)) {
       try {
         if (fs.readdirSync(dir).length > 0) break;
         fs.rmdirSync(dir);
@@ -426,19 +481,36 @@ export class Engine {
   }
 
   // ---------- revert ----------
+  /**
+   * Restore every touched file, then close the PR. If ANY file can't be written
+   * (locked, read-only, open in another process) the PR is deliberately left
+   * open and Error #17 lists the failures — closing it would delete the only
+   * copy of the baselines for the files that did not get restored. Retrying is
+   * safe: restoring an already-restored file is a no-op.
+   * @throws Error #17 if one or more files could not be restored.
+   */
   revert(prId: string): void {
     if (!this.storage.prExists(prId)) throw Errors.prNotFound(prId);
-    this.logClose(prId, "reverted"); // capture stats before restoring clears them
     const idx = this.storage.readBaselineIndex(prId);
+    // Snapshot stats first: restoring erases the diff the log describes.
+    const stats = this.closeStats(prId);
+    const failed: string[] = [];
     for (const [file, entry] of Object.entries(idx.files)) {
-      this.restoreBaseline(prId, file, entry);
+      try {
+        this.restoreBaseline(prId, file, entry);
+      } catch {
+        failed.push(file);
+      }
     }
+    if (failed.length) throw Errors.revertIncomplete(failed);
+    this.appendClose(stats, "reverted");
     this.storage.deletePR(prId);
   }
 
   // ---------- revert a single file ----------
   /** Restore just one file to its baseline, then drop it from the PR. */
   revertFile(prId: string, file: string): void {
+    file = this.normRel(file);
     const idx = this.storage.readBaselineIndex(prId);
     const entry = idx.files[file];
     if (!entry) return;
@@ -447,6 +519,33 @@ export class Engine {
     this.storage.removeBaselineFile(prId, file);
     this.storage.writeBaselineIndex(prId, idx);
     this.recordChange(prId);
+  }
+
+  /** Put a file back on disk from its baseline WITHOUT dropping it from the PR
+   *  — the "Recreate from baseline" resolution for Error #11, where the file
+   *  vanished from disk but is still part of the change set. */
+  restoreFile(prId: string, file: string): void {
+    file = this.normRel(file);
+    const idx = this.storage.readBaselineIndex(prId);
+    const entry = idx.files[file];
+    if (!entry) return;
+    this.restoreBaseline(prId, file, entry);
+    if (entry.deleted) {
+      entry.deleted = false;
+      this.storage.writeBaselineIndex(prId, idx);
+    }
+    this.recordChange(prId);
+  }
+
+  /** Files the PR still expects on disk that are gone (deleted outside VS Code,
+   *  e.g. by a script). Drives the Error #11 guard before commit/revert. */
+  missingFiles(prId: string): string[] {
+    const idx = this.storage.readBaselineIndex(prId);
+    const out: string[] = [];
+    for (const [file, entry] of Object.entries(idx.files)) {
+      if (entry.existed && !entry.deleted && !this.diskExists(file)) out.push(file);
+    }
+    return out.sort();
   }
 
   // ---------- edit metadata ----------
@@ -461,6 +560,7 @@ export class Engine {
   recapture(prId: string, onlyFile?: string): void {
     const idx = this.storage.readBaselineIndex(prId);
     if (onlyFile) {
+      onlyFile = this.normRel(onlyFile);
       if (idx.files[onlyFile]) {
         delete idx.files[onlyFile];
         this.storage.removeBaselineFile(prId, onlyFile);
@@ -482,8 +582,14 @@ export class Engine {
    * [selStart, selEnd] (1-based, inclusive). The new baseline adopts disk for
    * the committed regions; everything else stays an open change. Throws #13 if
    * the selection contains no diff.
+   *
+   * Granularity is a whole changed BLOCK, not a line: a selection that touches
+   * any part of a block finalizes all of it (this is what makes the diff
+   * panel's per-hunk Commit button coherent). A newly added file is one block,
+   * so committing any part of it commits the file.
    */
   commitSelection(prId: string, file: string, selStart: number, selEnd: number): void {
+    file = this.normRel(file);
     const idx = this.storage.readBaselineIndex(prId);
     const entry = idx.files[file];
     if (!entry || entry.binary) throw Errors.noDiffInSelection();
@@ -499,17 +605,18 @@ export class Engine {
     );
     if (!committedAny) throw Errors.noDiffInSelection();
 
-    // Re-anchor only this file: write the new baseline (existed files only).
-    if (entry.existed && !entry.deleted) {
-      this.storage.writeBaselineFile(prId, file, newBaseline);
-    } else if (!entry.existed) {
-      // a newly-added file: committing part of it just shrinks what's tracked.
-      // Treat the committed lines as permanent by promoting baseline to include
-      // them — but an added file's baseline is "nonexistent", so committing the
-      // whole selection effectively keeps disk; nothing to store. Recompute.
+    // Re-anchor this file to the new baseline. For a file that was ADDED in this
+    // PR the baseline is "did not exist", so committing part of it has to
+    // promote the entry to existed:true with the committed lines as its content
+    // — otherwise reverting later would delete lines the user made permanent.
+    // (Previously this branch did nothing at all, so partial commits on new
+    // files reported success and changed nothing.)
+    if (!entry.existed) {
+      entry.existed = true;
+      entry.deleted = false;
+      this.storage.writeBaselineIndex(prId, idx);
     }
-    // recordChange prunes the file if nothing remains (skips re-anchor when no
-    // remaining changes, per Section 9).
+    this.storage.writeBaselineFile(prId, file, newBaseline);
     this.recordChange(prId);
   }
 
@@ -520,6 +627,7 @@ export class Engine {
    * selection contains no diff. Not supported for binary files.
    */
   revertSelection(prId: string, file: string, selStart: number, selEnd: number): void {
+    file = this.normRel(file);
     const idx = this.storage.readBaselineIndex(prId);
     const entry = idx.files[file];
     if (!entry || entry.binary) throw Errors.noDiffInSelection();
@@ -567,7 +675,16 @@ export class Engine {
       try {
         metas.push(this.storage.readMeta(id));
       } catch {
-        // unreadable meta: surfaced via Error #8 when interacted with; skip here
+        // Unreadable meta: still list it, as a placeholder. Hiding it would make
+        // Error #8 (and its Reveal folder / Discard buttons) unreachable — the
+        // PR would be invisible but still counted in the storage dir.
+        metas.push({
+          id,
+          title: `(unreadable) ${id}`,
+          notes: "",
+          status: "open",
+          created: ""
+        });
       }
     }
     metas.sort((a, b) => b.created.localeCompare(a.created)); // newest first
@@ -606,12 +723,26 @@ function isBinaryBuffer(buf: Buffer): boolean {
 }
 
 /** Binary check straight from disk; treats unreadable paths (e.g. a directory)
- *  as binary so they're never line-diffed. */
+ *  as binary so they're never line-diffed. Reads only the first 8 KB — this runs
+ *  per tracked file on every save, and slurping whole video/image assets just to
+ *  look at their header was the single most expensive thing in a refresh. */
 function isBinaryOnDisk(absPath: string): boolean {
+  let fd: number | undefined;
   try {
-    return isBinaryBuffer(fs.readFileSync(absPath));
+    fd = fs.openSync(absPath, "r");
+    const buf = Buffer.allocUnsafe(8000);
+    const read = fs.readSync(fd, buf, 0, 8000, 0);
+    return isBinaryBuffer(buf.subarray(0, read));
   } catch {
     return true;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* already gone */
+      }
+    }
   }
 }
 

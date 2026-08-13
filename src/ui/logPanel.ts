@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as crypto from "node:crypto";
 import type { Engine } from "../engine/engine";
 import { prNum } from "../shared/protocol";
 
@@ -143,8 +144,5 @@ export class LogPanel {
 }
 
 function nonceStr(): string {
-  let s = "";
-  const c = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) s += c.charAt(Math.floor(Math.random() * c.length));
-  return s;
+  return crypto.randomBytes(24).toString("base64url");
 }

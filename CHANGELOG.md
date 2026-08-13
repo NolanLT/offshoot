@@ -6,6 +6,66 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-13
+
+### Fixed
+
+- **Dialog buttons that did nothing now work.** Five resolutions (`openExisting`,
+  `useDifferentId`, `openNew`, `selectExisting`, `recreate`) had no handler and
+  fell through to a silent no-op — most visibly Error #5, where both *Open
+  existing PR* and *Use a different id* did nothing at all. Opening a PR now runs
+  in a retry loop so a new id can be fed back in, and the resolution switch is
+  exhaustively typed, so an unhandled button is a build error rather than a
+  silent dead end.
+- **Committing a selection inside a newly added file no longer lies.** That
+  branch stored nothing while still reporting success, so the "committed" lines
+  stayed fully revertable. The file's baseline is now promoted to `existed` with
+  the committed content, and a later revert keeps those lines.
+- **Paths that escape the workspace are refused (new Error #16).** Every engine
+  entry point that takes a file path normalizes it and rejects absolute paths and
+  `..` segments. The MCP tools take paths straight from an AI, so a traversal
+  could previously read or write outside both the workspace and the storage dir.
+- **Revert is all-or-nothing (new Error #17).** A file that could not be restored
+  (locked, read-only) used to abort the loop partway with the PR half-applied.
+  Failures are collected, the PR is left open so no baseline is lost, and retry
+  is safe.
+- **A file deleted outside VS Code now reads as a deletion.** Without the editor's
+  delete event it was reported as a *modified* file with every line removed.
+- Reverting a PR logs the change stats it had *before* the restore, not the empty
+  diff left after it.
+- Storage writes go through a temp file + rename, so a crash mid-write can no
+  longer leave a truncated `meta.json` / `baseline.json`.
+- Corrupt PR data raises Errors #8/#9 with their recovery buttons instead of a
+  raw `JSON.parse` message, and a PR with unreadable metadata stays visible in
+  the list (it was hidden, which made #8 unreachable).
+- Error #6 (no active PR) replaces the dead-end "No active PR" toasts, and #7 vs
+  #2 now distinguish a stale sidebar row from an unknown id.
+- Error #11 fires when a line-range commit/revert targets a file that has since
+  vanished, offering *Recreate from baseline*.
+- CSP nonces use `crypto.randomBytes` instead of `Math.random()`.
+- `.claude/settings.local.json` was being packaged into the published .vsix.
+
+### Changed
+
+- File tree indents 8px per level (was 12px + a 6px base) and sits flush with the
+  rest of the sidebar, so deeply nested file names stay readable.
+- Explainer/helper text removed from the sidebar empty states, button tooltips,
+  review toasts, and the no-workspace view (which also cited the wrong storage
+  path — data lives in `~/.offshoot/<hash>`, never in the project).
+- The Refresh button no longer carries an icon.
+- Errors #3 and #4 are retired: they described stored deltas failing to apply,
+  which cannot happen now that deltas are always recomputed from
+  baseline-vs-disk. Their numbers are not reused.
+- The MCP server reports the real package version, enforces the same overlap
+  guard as the sidebar (`force: true` to override), and gains
+  `offshoot_commit_selection` / `offshoot_revert_selection`.
+- Binary detection reads only the first 8 KB instead of the whole file — it runs
+  per tracked file on every save.
+- Dependencies: `diff` 7 → 9 (clears the last advisory; `parsePatch`/`applyPatch`
+  are unused here), `esbuild` 0.24 → 0.28 (dev-server CORS advisory), plus the
+  non-breaking audit fixes. `npm audit` is clean. `@types/diff` dropped — `diff`
+  ships its own types now.
+
 ## [0.4.2] - 2026-06-26
 
 ### Changed

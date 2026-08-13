@@ -12,8 +12,7 @@ const EMPTY: SidebarState = {
   prs: [],
   activePrId: null,
   selected: null,
-  reviewing: false,
-  status: null
+  reviewing: false
 };
 
 function getFlag(key: string, fallback: boolean): boolean {
@@ -39,18 +38,10 @@ export function App() {
   return (
     <div className="app">
       <div className="top-row">
-        <button
-          className="btn neutral"
-          onClick={() => send({ type: "refresh" })}
-          title="Re-scan storage for PRs and refresh the view"
-        >
-          <span className="ico">⟳</span> Refresh
+        <button className="btn neutral" onClick={() => send({ type: "refresh" })}>
+          Refresh
         </button>
-        <button
-          className="btn neutral"
-          onClick={() => send({ type: "openLog" })}
-          title="Open this workspace's PR history"
-        >
+        <button className="btn neutral" onClick={() => send({ type: "openLog" })}>
           History
         </button>
       </div>
@@ -152,11 +143,7 @@ function OpenPRs({ state }: { state: SidebarState }) {
               onChange={(e) => setQuery(e.target.value)}
             />
           )}
-          {state.prs.length === 0 ? (
-            <div className="muted">
-              No open PRs. Open one, then edit files to track changes.
-            </div>
-          ) : filtered.length === 0 ? (
+          {state.prs.length === 0 ? null : filtered.length === 0 ? (
             <div className="muted">No PRs match “{query}”.</div>
           ) : (
             <ul className="pr-list">
@@ -171,7 +158,6 @@ function OpenPRs({ state }: { state: SidebarState }) {
                   <span className="pr-title">{pr.title}</span>
                   <button
                     className="icon-btn edit-pr"
-                    title="Edit title & notes"
                     onClick={(e) => {
                       e.stopPropagation();
                       send({ type: "editPR", id: pr.id });
@@ -179,9 +165,7 @@ function OpenPRs({ state }: { state: SidebarState }) {
                   >
                     ✎
                   </button>
-                  <span className="pr-count" title={`${pr.changeCount} changed file(s)`}>
-                    {pr.changeCount}
-                  </span>
+                  <span className="pr-count">{pr.changeCount}</span>
                 </li>
               ))}
             </ul>
@@ -216,9 +200,7 @@ function SelectedPanel({ state }: { state: SidebarState }) {
       {open && (
         <>
           {view.meta.notes && <div className="notes">{view.meta.notes}</div>}
-          {view.changedFiles.length === 0 ? (
-            <div className="muted">No changes captured yet.</div>
-          ) : (
+          {view.changedFiles.length > 0 && (
             <ChangesTree id={id} files={view.changedFiles} />
           )}
         </>
@@ -227,18 +209,10 @@ function SelectedPanel({ state }: { state: SidebarState }) {
       <hr />
 
       <div className="actions">
-        <button
-          className="btn danger"
-          title="Select lines in an open file, then click to revert only those lines to baseline"
-          onClick={() => send({ type: "revertSelection", id })}
-        >
+        <button className="btn danger" onClick={() => send({ type: "revertSelection", id })}>
           Revert Selected
         </button>
-        <button
-          className="btn primary"
-          title="Select lines in an open file, then click to commit only those lines"
-          onClick={() => send({ type: "commitSelection", id })}
-        >
+        <button className="btn primary" onClick={() => send({ type: "commitSelection", id })}>
           Commit Selected
         </button>
         <button
@@ -325,7 +299,9 @@ function ChangesTree({ id, files }: { id: string; files: ChangedFile[] }) {
     const rows: ReactNode[] = [];
     for (const child of sortedChildren(node)) {
       const isFolder = child.children.size > 0;
-      const pad = depth * 12 + 6;
+      // 8px per level, flush left at depth 0 — deep trees otherwise eat the
+      // width the file name needs.
+      const pad = depth * 8;
       if (isFolder) {
         const k = nodeKind(child);
         const collapsed = overrides.has(child.path)
@@ -371,7 +347,6 @@ function FileLeaf({ id, f, pad }: { id: string; f: ChangedFile; pad: number }) {
       </span>
       <button
         className="icon-btn revert-file"
-        title="Revert this file to baseline"
         onClick={() => send({ type: "revertFile", id, file: f.file })}
       >
         ↩

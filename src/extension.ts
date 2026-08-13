@@ -34,7 +34,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.commands.registerCommand("offshoot.commitSelection", () => {
       const active = controller.engine.storage.readActive();
       if (!active) {
-        void vscode.window.showWarningMessage("Offshoot: No active PR.");
+        void controller.reportNoActivePR(); // Error #6, with a way out
         return;
       }
       void controller.handleMessage({ type: "commitSelection", id: active });
@@ -42,7 +42,7 @@ export function activate(ctx: vscode.ExtensionContext) {
     vscode.commands.registerCommand("offshoot.revertSelection", () => {
       const active = controller.engine.storage.readActive();
       if (!active) {
-        void vscode.window.showWarningMessage("Offshoot: No active PR.");
+        void controller.reportNoActivePR(); // Error #6, with a way out
         return;
       }
       void controller.handleMessage({ type: "revertSelection", id: active });
@@ -53,6 +53,7 @@ export function activate(ctx: vscode.ExtensionContext) {
       } else {
         const active = controller.engine.storage.readActive();
         if (active) void controller.handleMessage({ type: "review", id: active });
+        else void controller.reportNoActivePR();
       }
     }),
     vscode.commands.registerCommand(
@@ -79,7 +80,6 @@ class NoWorkspaceProvider implements vscode.WebviewViewProvider {
     view.webview.options = { enableScripts: false };
     view.webview.html = `<!DOCTYPE html><html><body style="font-family:var(--vscode-font-family);padding:12px;color:var(--vscode-foreground)">
       <h3>Offshoot</h3>
-      <p>Open a folder to start tracking PRs. Offshoot stores its data under <code>.offshoot/</code> at the workspace root.</p>
     </body></html>`;
   }
 }

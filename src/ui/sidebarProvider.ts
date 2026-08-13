@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as crypto from "node:crypto";
 import type { Controller } from "../controller";
 import type { ToExt, ToWebview, SidebarState } from "../shared/protocol";
 
@@ -80,9 +81,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 }
 
+/** CSP nonce. Math.random() is not a CSPRNG, and a guessable nonce is exactly
+ *  what the nonce exists to prevent. */
 function makeNonce(): string {
-  let text = "";
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) text += chars.charAt(Math.floor(Math.random() * chars.length));
-  return text;
+  return crypto.randomBytes(24).toString("base64url");
 }

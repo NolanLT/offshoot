@@ -1,5 +1,9 @@
 .vscode/**
 .github/**
+.claude/**
+*.vsix
+package-lock.json
+.offshootignore
 src/**
 webview/**
 scripts/**

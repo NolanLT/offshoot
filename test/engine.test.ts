@@ -394,5 +394,82 @@ function read(root: string, rel: string): string {
   eq(e.readLog().length, 0, "clear empties the log");
 })();
 
+// --- Test 22: committing a selection of a NEWLY ADDED file ---
+// Regression: this branch used to do nothing, so the commit reported success
+// while leaving the whole file tracked (and revertable).
+(function commitSelectionOnAddedFile() {
+  console.log("commit selection on an added file:");
+  const root = tmp();
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "");
+  e.noteCreate("pr1", "new.txt");
+  write(root, "new.txt", "keep1\nkeep2\ndrop3\n");
+  e.recordChange("pr1");
+  eq(e.prView("pr1").changedFiles[0].kind, "added", "starts as an added file");
+
+  // A brand-new file is a single added block, so committing any part of it
+  // finalizes the whole file (block granularity, same as the hunk buttons).
+  e.commitSelection("pr1", "new.txt", 1, 2);
+  eq(e.prView("pr1").changedFiles.length, 0, "no open change left after commit");
+
+  // The point of the fix: revert must now KEEP the committed file. Before, this
+  // branch stored nothing, so revert deleted it as an untouched addition.
+  e.revert("pr1");
+  eq(read(root, "new.txt"), "keep1\nkeep2\ndrop3\n", "committed file survives the revert");
+})();
+
+// --- Test 23: paths that escape the workspace are refused (Error #16) ---
+(function pathGuard() {
+  console.log("path traversal guard:");
+  const root = tmp();
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "");
+  const bad = ["../outside.txt", "a/../../outside.txt", "/etc/passwd", "C:\\Windows\\x.ini"];
+  let refused = 0;
+  for (const p of bad) {
+    try {
+      e.noteCreate("pr1", p);
+    } catch {
+      refused++;
+    }
+  }
+  eq(refused, bad.length, "every escaping path refused");
+  // ordinary paths still normalize and work
+  e.noteCreate("pr1", "./sub/./ok.txt");
+  ok(e.touchedFiles("pr1").includes("sub/ok.txt"), "normal path normalized and kept");
+})();
+
+// --- Test 24: a file deleted outside VS Code still reads as a deletion ---
+(function deletedWithoutEvent() {
+  console.log("delete without a VS Code event:");
+  const root = tmp();
+  write(root, "gone.txt", "a\nb\n");
+  const e = new Engine(root);
+  e.openPR("pr1", "t", "");
+  e.noteEdit("pr1", "gone.txt", "a\nb\n"); // tracked, but never noteDelete'd
+  fs.rmSync(path.join(root, "gone.txt")); // e.g. removed by a script
+  e.recordChange("pr1");
+  const cf = e.prView("pr1").changedFiles;
+  eq(cf[0].kind, "deleted", "reported as deleted, not modified");
+  eq(e.missingFiles("pr1"), ["gone.txt"], "listed as missing on disk");
+  e.revert("pr1");
+  eq(read(root, "gone.txt"), "a\nb\n", "revert brings it back");
+})();
+
+// --- Test 25: revert logs the stats it had BEFORE restoring ---
+(function revertLogsRealStats() {
+  console.log("revert log stats:");
+  const root = tmp();
+  write(root, "a.txt", "one\n");
+  const e = new Engine(root);
+  e.openPR("pr1", "T", "");
+  e.noteEdit("pr1", "a.txt", "one\n");
+  write(root, "a.txt", "two\n");
+  e.recordChange("pr1");
+  e.revert("pr1");
+  const entry = e.readLog()[0];
+  eq([entry.files, entry.additions, entry.removals], [1, 1, 1], "stats captured pre-revert");
+})();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

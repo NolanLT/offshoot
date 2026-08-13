@@ -87,13 +87,14 @@ export interface PRListItem extends PRMeta {
   removals: number;
 }
 
+// Feedback is delivered through native VS Code notifications, not an in-webview
+// status line — so SidebarState carries no `status` field.
 export interface SidebarState {
   hasWorkspace: boolean;
   prs: PRListItem[];
   activePrId: string | null;
   selected: PRView | null;
   reviewing: boolean;
-  status: { kind: "info" | "error"; text: string } | null;
 }
 
 // ---- Messages: webview -> extension ----

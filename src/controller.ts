@@ -26,13 +26,16 @@ export class Controller {
   private logPanel: LogPanel;
 
   private post: ((state: SidebarState) => void) | null = null;
-  private status: SidebarState["status"] = null;
   /** current editor content, before each change, for baseline capture. */
   private lastContent = new Map<string, string>();
   private ignore: IgnoreMatcher;
   private statusBar: vscode.StatusBarItem;
   private cleanedWhenEmpty = false;
   private askedToOpenPr = false;
+  /** Ids the sidebar was last told about. Lets us tell "the PR you clicked has
+   *  since vanished from disk" (#7 — Remove from list) apart from "unknown id"
+   *  (#2 — Refresh PR list), which need different resolutions. */
+  private lastPrIds = new Set<string>();
   /** Original pre-edit content of files touched while NO PR was open, so the
    *  edit that prompted "open a PR?" isn't lost — the next PR opened absorbs
    *  these as its baselines. Keyed by rel path; first (earliest) value wins. */
@@ -139,6 +142,7 @@ export class Controller {
       }
       return { ...meta, changeCount, additions, removals };
     });
+    this.lastPrIds = new Set(prs.map((p) => p.id));
     const activePrId = this.engine.storage.readActive();
     const reviewing = this.decorations.reviewing;
     const selectedId = reviewing ? this.decorations.prId : activePrId;
@@ -155,8 +159,7 @@ export class Controller {
       prs,
       activePrId,
       selected,
-      reviewing,
-      status: this.status
+      reviewing
     };
   }
 
@@ -228,6 +231,35 @@ export class Controller {
 
   private openPrIds(): string[] {
     return this.engine.storage.listPrIds();
+  }
+
+  /** Guard every command that names a PR. #7 when the sidebar is showing a PR
+   *  whose folder is gone (stale row → Remove from list); #2 otherwise. */
+  private requirePr(prId: string): void {
+    if (this.engine.storage.prExists(prId)) return;
+    throw this.lastPrIds.has(prId)
+      ? Errors.folderMissing(prId)
+      : Errors.prNotFound(prId);
+  }
+
+  /** Surface Error #6 (no active PR) with its Open new / Select existing
+   *  buttons, instead of a dead-end warning toast. */
+  async reportNoActivePR(): Promise<void> {
+    await this.handleError(Errors.noActivePR());
+  }
+
+  /** QuickPick over the open PRs — the "Select an existing PR" resolution. */
+  private async pickPR(): Promise<string | undefined> {
+    const items = this.engine.listPRs().map((m) => ({
+      label: `PR ${prNum(m.id)}`,
+      description: m.title,
+      id: m.id
+    }));
+    if (items.length === 0) return undefined;
+    const picked = await vscode.window.showQuickPick(items, {
+      title: "Select a PR"
+    });
+    return picked?.id;
   }
 
   private openEditorFor(file: string): vscode.TextEditor | undefined {
@@ -339,10 +371,7 @@ export class Controller {
     if (this.askedToOpenPr) return;
     this.askedToOpenPr = true;
     void vscode.window
-      .showInformationMessage(
-        "Offshoot: you're editing without an open PR — open one to track changes?",
-        "Open PR"
-      )
+      .showInformationMessage("Offshoot: you're editing without an open PR.", "Open PR")
       .then((pick) => {
         if (pick === "Open PR") void this.cmdOpenPR("", "");
       });
@@ -527,7 +556,7 @@ export class Controller {
       // submit (Enter) / cancel (Esc) and inline validation that blocks empty.
       const entered = await vscode.window.showInputBox({
         title: "Open Pull Request — title required (Offshoot Error #14)",
-        prompt: "Enter a title for the new Pull Request. Press Enter to open it, or Esc to cancel.",
+        prompt: "Enter a title for the new Pull Request.",
         placeHolder: "e.g. Refactor auth flow",
         ignoreFocusOut: true,
         validateInput: (v) => (v.trim() ? null : "A PR title is required.")
@@ -535,15 +564,24 @@ export class Controller {
       if (entered === undefined || !entered.trim()) return; // cancelled
       finalTitle = entered.trim();
     }
-    const prId = id?.trim() || this.nextId();
-    try {
-      this.engine.openPR(prId, finalTitle, notes);
-      this.absorbOrphanBaselines(prId);
-      this.decorations.stop();
-      this.setStatus("info", `Opened PR ${prNum(prId)}.`);
-      this.refresh();
-    } catch (err) {
-      await this.handleError(err);
+    // Loop so Error #5's "Use a different id" can feed a new id back in.
+    let prId = id?.trim() || this.nextId();
+    for (;;) {
+      try {
+        this.engine.openPR(prId, finalTitle, notes);
+        this.absorbOrphanBaselines(prId);
+        this.decorations.stop();
+        this.setStatus("info", `Opened PR ${prNum(prId)}.`);
+        this.refresh();
+        return;
+      } catch (err) {
+        const res = await this.resolveOr(err);
+        if (!res) return;
+        const done = await this.applyResolution(res, prId, {
+          setId: (v) => (prId = v)
+        });
+        if (done) return;
+      }
     }
   }
 
@@ -591,13 +629,10 @@ export class Controller {
       await this.openDiffPanel(id, first.file);
       this.setStatus(
         "info",
-        `Reviewing PR ${prNum(id)}: ${view.changedFiles.length} changed file(s). In-editor highlights: green added, blue modified, red removed.`
+        `Reviewing PR ${prNum(id)}: ${view.changedFiles.length} changed file(s).`
       );
     } else {
-      this.setStatus(
-        "info",
-        `Review on for PR ${prNum(id)}: no changes yet. Edit and save a file to see changes.`
-      );
+      this.setStatus("info", `Reviewing PR ${prNum(id)}: no changes yet.`);
     }
     this.decorations.applyToAll();
     this.refresh();
@@ -648,7 +683,7 @@ export class Controller {
   }
 
   private async cmdCommit(prId: string) {
-    if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    this.requirePr(prId);
     const meta = this.engine.storage.readMeta(prId);
     if (
       !(await this.confirm(
@@ -682,7 +717,7 @@ export class Controller {
   }
 
   private async cmdRevert(prId: string) {
-    if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    this.requirePr(prId);
     const meta = this.engine.storage.readMeta(prId);
     if (
       !(await this.confirm(
@@ -717,7 +752,7 @@ export class Controller {
   }
 
   private async cmdRevertFile(prId: string, file: string) {
-    if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    this.requirePr(prId);
     if (
       !(await this.confirm(
         `Revert ${file} to baseline in PR ${prNum(prId)}?\n\nThis overwrites the file on disk.`,
@@ -753,7 +788,7 @@ export class Controller {
   }
 
   private async cmdEditPR(prId: string) {
-    if (!this.engine.storage.prExists(prId)) throw Errors.prNotFound(prId);
+    this.requirePr(prId);
     const meta = this.engine.storage.readMeta(prId);
     const title = await vscode.window.showInputBox({
       prompt: "PR title",
@@ -777,7 +812,7 @@ export class Controller {
     if (!editor) return;
     const activePr = this.engine.storage.readActive();
     if (!activePr) {
-      void info("No active PR.");
+      void this.reportNoActivePR();
       return;
     }
     const file = this.relFor(editor.document.uri);
@@ -844,6 +879,8 @@ export class Controller {
 
     for (;;) {
       try {
+        this.requirePr(prId);
+        this.checkFilePresent(prId, file);
         this.checkOverlap(prId, [file]);
         this.engine.commitSelection(prId, file, start, end);
         const ed = this.openEditorFor(file);
@@ -874,8 +911,10 @@ export class Controller {
     let ignoreOverlap = false;
     for (;;) {
       try {
+        this.requirePr(prId);
         const ed = this.openEditorFor(file);
         if (ed?.document.isDirty) await ed.document.save();
+        this.checkFilePresent(prId, file);
         if (!ignoreOverlap) this.checkOverlap(prId, [file], "revert");
         this.engine.revertSelection(prId, file, start, end);
         this.syncLastContent([file]);
@@ -905,6 +944,13 @@ export class Controller {
     }
   }
 
+  /** #11 — a line-range op needs the file to be on disk. It can be gone if it
+   *  was deleted outside VS Code after the diff panel rendered. */
+  private checkFilePresent(prId: string, file: string) {
+    if (!this.engine.missingFiles(prId).includes(file)) return;
+    throw Errors.fileMissing(file, this.engine.storage.hasBaselineFile(prId, file));
+  }
+
   private checkOverlap(prId: string, files: string[], op: "commit" | "revert" = "commit") {
     const overlapping = this.engine.overlappingPRs(prId, files);
     if (overlapping.length) {
@@ -929,20 +975,90 @@ export class Controller {
   }
 
   /** Apply a chosen resolution. Returns true if the operation is fully done
-   *  (no further retry); false to loop the guard again. */
+   *  (no further retry); false to loop the guard again. Every ResolutionId the
+   *  error catalogue can produce must have a case here — a missing one silently
+   *  turns a dialog button into a no-op. */
   private async applyResolution(
     res: Resolution,
     prId: string,
-    hooks: { setIgnoreOverlap?: () => void }
+    hooks: {
+      setIgnoreOverlap?: () => void;
+      /** #5 — retry opening the PR under a different id. */
+      setId?: (id: string) => void;
+    }
   ): Promise<boolean> {
+    const target = (res.data as string) || prId;
     switch (res.id) {
       case "cancel":
         return true;
       case "retry":
         return false;
       case "refreshList":
-      case "removeFromList":
         this.refresh();
+        return true;
+      case "removeFromList": {
+        // The row pointed at a PR that is no longer on disk: drop every stale
+        // reference to it, not just the list row.
+        if (target && !this.engine.storage.prExists(target)) {
+          if (this.engine.storage.readActive() === target) {
+            this.engine.storage.writeActive(null);
+          }
+          if (this.decorations.prId === target) this.decorations.stop();
+        }
+        this.engine.cleanResidualStorage();
+        this.refresh();
+        return true;
+      }
+      case "openExisting": {
+        if (!target || !this.engine.storage.prExists(target)) {
+          this.refresh();
+          return true;
+        }
+        this.engine.storage.writeActive(target);
+        this.setStatus("info", `Selected PR ${prNum(target)}.`);
+        this.refresh();
+        return true;
+      }
+      case "useDifferentId": {
+        const entered = await vscode.window.showInputBox({
+          title: "Open Pull Request — choose a different id",
+          value: this.nextId(),
+          ignoreFocusOut: true,
+          validateInput: (v) => {
+            const t = v.trim();
+            if (!t) return "An id is required.";
+            if (this.engine.storage.prExists(t)) return `PR ${prNum(t)} already exists.`;
+            return null;
+          }
+        });
+        if (!entered?.trim()) return true; // cancelled
+        hooks.setId?.(entered.trim());
+        return false; // retry the open with the new id
+      }
+      case "openNew":
+        await this.cmdOpenPR("", "");
+        return true;
+      case "selectExisting": {
+        const picked = await this.pickPR();
+        if (picked) {
+          this.engine.storage.writeActive(picked);
+          this.setStatus("info", `Selected PR ${prNum(picked)}.`);
+          this.refresh();
+        }
+        return true;
+      }
+      case "recreate": {
+        // #11 — the file vanished from disk; put it back from the baseline and
+        // retry the operation that needed it.
+        if (!target) return true;
+        this.engine.restoreFile(prId, target);
+        this.syncLastContent([target]);
+        this.afterFileMutation(prId, target);
+        return false;
+      }
+      case "skipFile":
+        // #11 — leave the missing file alone, which means abandoning the
+        // per-file operation that tripped over it.
         return true;
       case "save": {
         for (const d of vscode.workspace.textDocuments) {
@@ -960,21 +1076,21 @@ export class Controller {
         return false;
       }
       case "recapture":
-        this.engine.recapture((res.data as string) ?? prId);
-        this.setStatus("info", `Re-captured PR ${prNum((res.data as string) ?? prId)}.`);
+        this.engine.recapture(target);
+        this.setStatus("info", `Re-captured PR ${prNum(target)}.`);
         this.refresh();
         return false;
       case "discard":
-        this.engine.commit((res.data as string) ?? prId);
-        this.setStatus("info", `Discarded PR ${prNum((res.data as string) ?? prId)}.`);
+        this.engine.commit(target);
+        this.setStatus("info", `Discarded PR ${prNum(target)}.`);
         this.refresh();
         return true;
       case "revealFolder":
-        await this.revealFolder((res.data as string) ?? prId);
+        await this.revealFolder(target);
         return true;
       case "commitOverlap": {
-        const target = res.data as string;
         this.engine.commit(target);
+        this.logPanel.refresh();
         this.refresh();
         // if we committed the PR under operation, we're done; else loop to retry
         return target === prId;
@@ -983,19 +1099,14 @@ export class Controller {
         for (const id of res.data as string[]) {
           if (this.engine.storage.prExists(id)) this.engine.commit(id);
         }
+        this.logPanel.refresh();
         this.refresh();
         return true;
       }
       case "forceBaseline":
         hooks.setIgnoreOverlap?.();
         return false;
-      case "keepDisk":
-      case "skipFile":
-        hooks.setIgnoreOverlap?.();
-        return false;
       case "chooseSelection":
-        return true;
-      default:
         return true;
     }
   }
@@ -1005,6 +1116,10 @@ export class Controller {
     await vscode.commands.executeCommand("revealFileInOS", dir);
   }
 
+  /** Terminal error path: for errors raised outside a command's guard loop.
+   *  Resolutions that ask for a retry have nothing to retry here, so the choice
+   *  is applied once and the result discarded — commands that can meaningfully
+   *  retry (commit/revert/open/selection) run their own loop instead. */
   private async handleError(err: unknown) {
     if (err instanceof OffshootError) {
       const res = await resolveDialog(err);

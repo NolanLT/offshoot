@@ -8,7 +8,6 @@ export type ResolutionId =
   | "cancel"
   | "retry"
   | "refreshList"
-  | "keepDisk"
   | "forceBaseline"
   | "recapture"
   | "openExisting"
@@ -60,29 +59,10 @@ export const Errors = {
       CANCEL
     ]),
 
-  lineOutOfRange: (file: string) =>
-    new OffshootError(
-      3,
-      `Stored deltas no longer line up with ${file} (line out of range).`,
-      [
-        { id: "recapture", label: "Re-capture (loses record)", destructive: true },
-        { id: "discard", label: "Discard PR", destructive: true },
-        { id: "revealFolder", label: "Reveal folder" },
-        CANCEL
-      ]
-    ),
-
-  contentMismatch: (file: string) =>
-    new OffshootError(
-      4,
-      `A line in ${file} no longer matches what the delta expected (changed outside this PR).`,
-      [
-        { id: "keepDisk", label: "Keep disk version" },
-        { id: "forceBaseline", label: "Force baseline", destructive: true },
-        { id: "recapture", label: "Re-capture this PR", destructive: true },
-        CANCEL
-      ]
-    ),
+  // #3 and #4 are RETIRED. They described stored deltas failing to apply, which
+  // cannot happen here: deltas.json is always recomputed from baseline-vs-disk
+  // and never replayed onto a file. The numbers are not reused, so the codes
+  // users have already seen keep their meaning.
 
   idExists: (id: string) =>
     new OffshootError(5, `PR ${prNum(id)} already exists.`, [
@@ -111,8 +91,8 @@ export const Errors = {
       CANCEL
     ]),
 
-  deltasUnreadable: (id: string) =>
-    new OffshootError(9, `deltas.json for PR ${prNum(id)} is unreadable.`, [
+  deltasUnreadable: (id: string, file = "deltas.json") =>
+    new OffshootError(9, `${file} for PR ${prNum(id)} is unreadable.`, [
       { id: "recapture", label: "Re-capture (loses record)", destructive: true, data: id },
       { id: "discard", label: "Discard PR", destructive: true, data: id },
       { id: "revealFolder", label: "Reveal folder", data: id },
@@ -208,5 +188,29 @@ export const Errors = {
     new OffshootError(13, "No diff in the selected region.", [
       { id: "chooseSelection", label: "Choose another selection" },
       CANCEL
-    ])
+    ]),
+
+  // #16 — a file path that escapes the workspace (`..`, absolute, or a drive
+  // letter). Never legitimate; the only sane answer is to refuse it.
+  pathOutsideWorkspace: (file: string) =>
+    new OffshootError(
+      16,
+      `Refusing to touch a path outside the workspace: ${file}.`,
+      [CANCEL]
+    ),
+
+  // #17 — revert restored some files but not all (locked, read-only, in use).
+  // The PR is deliberately left open so nothing is lost; retry is safe because
+  // restoring a file to its baseline is idempotent.
+  revertIncomplete: (files: string[]) =>
+    new OffshootError(
+      17,
+      `Could not restore ${files.length} file(s): ${files.join(", ")}. ` +
+        `The PR was left open so no baseline is lost.`,
+      [
+        { id: "retry", label: "Retry" },
+        { id: "revealFolder", label: "Reveal folder" },
+        CANCEL
+      ]
+    )
 };
