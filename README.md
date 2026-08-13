@@ -34,6 +34,10 @@ Revert a PR and disk is restored to the baseline.
 5. **Commit** to make it permanent, **Revert** to roll back, or **Commit
    selected** to finalize just the lines you've selected. You can also revert a
    single file from the changes list, and edit a PR's title/notes (✎).
+   Selections work at *block* granularity: touching any part of a changed block
+   finalizes (or reverts) all of it, which is what makes the per-hunk buttons in
+   the diff panel mean the same thing. A newly added file is a single block, so
+   committing any part of it commits the file.
 6. While a PR is active, jump between changed regions in the current file with
    **Alt+PageDown** / **Alt+PageUp** (Offshoot: Go to Next/Previous Change).
 
@@ -45,16 +49,26 @@ Offshoot never tracks `.offshoot/`, `.git/`, or `node_modules/`. Add a
 Offshoot stores PR data outside the project, under `~/.offshoot/<workspace-hash>`.
 This deterministic location is computed from your workspace path, so the
 extension and the standalone MCP server both operate on the same PR data.
-Each open PR is still a self-contained folder (`meta.json`, `deltas.json`, cached
-baseline of touched files); committing a PR deletes its folder and leaves no
-extra state behind.
+Each open PR is a self-contained folder — `meta.json` (title/notes/date),
+`baseline.json` (what the PR touched and whether each file existed),
+`deltas.json` (the derived change summary), and `baseline/` (the cached `old`
+content of touched files). Committing a PR deletes its folder and leaves no extra
+state behind.
+
+Every file in there is written via a temp file and renamed into place, so an
+interrupted write can't leave a half-written index behind. A path that would
+escape the workspace or the storage folder is refused outright (Error #16).
 
 ## Guards
 
 Before any disk-writing operation, Offshoot runs a guard. When a situation has
-more than one valid fix (overlapping PRs, unsaved buffers, a missing file, a
-content mismatch), it surfaces a dialog with real action buttons instead of
+more than one valid fix (overlapping PRs, unsaved buffers, a file that vanished,
+corrupt PR data), it surfaces a dialog with real action buttons instead of
 silently refusing. Data-losing choices say so in their label and ask to confirm.
+
+Every button in those dialogs is wired to a handler, and the mapping is checked
+at compile time — a resolution without an implementation fails the build rather
+than becoming a button that does nothing.
 
 ## Error reference
 
@@ -62,26 +76,32 @@ When a guard stops an operation, Offshoot shows a modal titled
 **“Offshoot (Error #N): …”** with buttons for every genuine fix plus Cancel.
 Buttons that lose data say so and ask to confirm. Use this table to debug:
 
-| #  | Meaning | Choices offered |
-|----|---------|-----------------|
-| 1  | Miscellaneous / unspecified failure | Retry · Cancel |
-| 2  | PR not found (bad id) | Refresh PR list · Cancel |
-| 3  | Line out of range — stored deltas no longer line up | Re-capture (loses record) · Discard PR · Reveal folder · Cancel |
-| 4  | Content mismatch — a line changed outside this PR | Keep disk · Force baseline · Re-capture · Cancel |
-| 5  | PR id already exists | Open existing PR · Use a different id · Cancel |
-| 6  | No active PR | Open a new PR · Select an existing PR · Cancel |
-| 7  | PR folder missing / closed | Remove from list · Cancel |
-| 8  | `meta.json` unreadable | Reveal folder · Discard PR · Cancel |
-| 9  | `deltas.json` unreadable | Re-capture (loses record) · Discard PR · Reveal folder · Cancel |
-| 10 | Unsaved changes in affected files | Save & continue · Discard & continue · Cancel |
-| 11 | File no longer exists | Skip this file · Recreate from baseline · Cancel |
-| 12 | Committing a PR that overlaps other open PR(s) on the same file | Commit this PR only · one Commit button per overlapping PR · Commit all overlapping · Cancel |
-| 13 | No diff in the selected region | Choose another selection · Cancel |
-| 14 | A PR title is required (tried to open a PR with no title) | Type a title in the box → Enter to open · Esc to cancel |
-| 15 | Reverting a PR that overlaps other open PR(s) on the same file | Revert this PR anyway (overwrites to baseline) · Commit an overlapping PR first · Commit all overlapping first · Cancel |
+| #  | Meaning | When you'll see it | Choices offered |
+|----|---------|--------------------|-----------------|
+| 1  | Miscellaneous / unspecified failure | Fallback for an unclassified failure | Retry · Cancel |
+| 2  | PR not found (unknown id) | An id that was never in the list — e.g. from a command or the MCP server | Refresh PR list · Cancel |
+| 5  | PR id already exists | Opening a PR with a custom id that's taken | Open existing PR · Use a different id · Cancel |
+| 6  | No active PR | A command that needs a selected PR (Commit/Revert Selection, Toggle Review, jump-to-change) with none active | Open a new PR · Select an existing PR · Cancel |
+| 7  | PR folder missing / closed | The sidebar row is stale — the PR was removed on disk (e.g. by the MCP server) after the list was drawn | Remove from list · Cancel |
+| 8  | `meta.json` unreadable | The PR's metadata is missing or corrupt; it stays listed as `(unreadable)` so you can act on it | Reveal folder · Discard PR · Cancel |
+| 9  | `deltas.json` / `baseline.json` unreadable | A PR's change record or file index is corrupt | Re-capture (loses record) · Discard PR · Reveal folder · Cancel |
+| 10 | Unsaved changes in affected files | Committing/reverting while a touched file has unsaved edits | Save & continue · Discard & continue · Cancel |
+| 11 | File no longer exists | A line-range commit/revert whose file vanished from disk since the diff was drawn | Skip this file · Recreate from baseline · Cancel |
+| 12 | Committing a PR that overlaps other open PR(s) on the same file | Commit, when another open PR holds a baseline for a shared file | Commit this PR only · one Commit button per overlapping PR · Commit all overlapping · Cancel |
+| 13 | No diff in the selected region | Commit/Revert Selection over lines that contain no change | Choose another selection · Cancel |
+| 14 | A PR title is required | Opening a PR with an empty title | Type a title in the box → Enter to open · Esc to cancel |
+| 15 | Reverting a PR that overlaps other open PR(s) on the same file | Revert, when another open PR holds a baseline for a shared file | Revert this PR anyway (overwrites to baseline) · Commit an overlapping PR first · Commit all overlapping first · Cancel |
+| 16 | Path outside the workspace | A file path with a `..` segment, or an absolute path — refused before it reaches disk | Cancel |
+| 17 | Revert incomplete | One or more files couldn't be restored (locked, read-only, in use). The PR stays open so no baseline is lost; retrying is safe | Retry · Reveal folder · Cancel |
 
 Every error offers at least one real action plus Cancel; choosing a fix re-runs
 the guard before touching disk, so a fix can’t create a new inconsistency.
+
+**Retired codes.** **#3** (line out of range) and **#4** (content mismatch)
+described stored deltas failing to replay onto a file. That can't happen:
+`deltas.json` is always recomputed from baseline-vs-disk and is never applied to
+your files. Both were removed in 0.5.0 and their numbers are **not reused**, so
+any code you've seen before still means what it meant.
 
 ## AI control (MCP)
 
@@ -97,7 +117,7 @@ follows whatever project the session is in):
 ```bash
 # portable — runs straight from GitHub, no local path:
 claude mcp add offshoot --scope user -- npx -y github:NolanLT/offshoot
-# pin a release:        npx -y github:NolanLT/offshoot#v0.1.1
+# pin a release:        npx -y github:NolanLT/offshoot#v0.5.0
 # or run a local build: node "<path-to-offshoot>/dist/mcp/server.cjs"
 # pin a workspace:      node "<path-to-offshoot>/dist/mcp/server.cjs" --workspace "C:/path/to/project"
 # or set the workspace via env: OFFSHOOT_WORKSPACE="C:/path/to/project"
@@ -105,7 +125,14 @@ claude mcp add offshoot --scope user -- npx -y github:NolanLT/offshoot
 
 Tools: `offshoot_list_prs`, `offshoot_open_pr`, `offshoot_track_files`,
 `offshoot_changed_files`, `offshoot_pr_diff`, `offshoot_commit`,
-`offshoot_revert`, `offshoot_revert_file`, `offshoot_recapture`.
+`offshoot_revert`, `offshoot_revert_file`, `offshoot_commit_selection`,
+`offshoot_revert_selection`, `offshoot_recapture`.
+
+The MCP path runs the same guards as the sidebar: `offshoot_commit` and
+`offshoot_revert` refuse when another open PR holds a baseline for a shared file
+(#12 / #15) and report which PRs conflict — pass `force: true` to proceed anyway.
+Paths are validated the same way too (#16), so an agent can't reach outside the
+workspace.
 
 **Headless capture:** because baselines are captured from pre-edit content, an AI
 editing files on its own should call `offshoot_track_files` for the files it's
@@ -120,7 +147,13 @@ text or binary (e.g. an image) — restores it byte-for-byte, because Offshoot
 saves its bytes just before deletion. Binary *content* changes (editing an
 image's pixels) are not tracked — only add and delete. **Folders work too:**
 deleting a folder restores its whole tree on revert, and reverting an added
-folder removes it. Deletions are captured when performed through VS Code.
+folder removes it.
+
+Deleting through VS Code is what lets Offshoot save the bytes first, so that path
+restores the file exactly. A file removed *outside* the editor (a script, an
+agent, the shell) still registers as a deletion rather than a file that lost all
+its lines, and revert restores it from the baseline captured when the PR first
+touched it.
 
 ## Out of scope (by design)
 
